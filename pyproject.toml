@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "skills-detector"
+version = "0.1.0"
+description = "Zero-execution static detection of malicious Agent Skills"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{name = "2023cghacker"}]
+dependencies = []
+
+[project.scripts]
+skills-detector = "skills_detector.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

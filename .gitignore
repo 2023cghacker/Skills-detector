@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Untrusted datasets and generated results
+data/
+datasets/
+artifacts/
+runs/
+results/
+output/
+*.jsonl
+*.log
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
