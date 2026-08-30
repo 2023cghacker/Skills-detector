@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/2023cghacker/Skills-detector/actions"><img alt="Research prototype" src="https://img.shields.io/badge/status-research%20prototype-f59e0b"></a>
+  <a href="https://github.com/2023cghacker/Skills-detector/actions"><img alt="Active development" src="https://img.shields.io/badge/status-active%20development-2563eb"></a>
   <img alt="Zero target execution" src="https://img.shields.io/badge/analysis-zero%20target%20execution-0891b2">
   <img alt="Python 3.10+" src="https://img.shields.io/badge/python-3.10%2B-3776ab">
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-16a34a"></a>
@@ -18,15 +18,7 @@ untrusted data; extracts source-grounded security evidence; and returns
 modules, or executing Skill content.
 
 The project accompanies the research paper **Read Before You Run:
-Zero-Execution Detection of Malicious Agent Skills**. It is evolving from a
-reproducible detector into public-interest infrastructure for auditing the
-Agent Skills supply chain.
-
-> [!IMPORTANT]
-> This repository is an active research prototype. Current numbers are
-> benchmark-local measurements, not claims about malware prevalence on public
-> platforms. Ecosystem findings will be published only after independent
-> validation and coordinated disclosure.
+Zero-Execution Detection of Malicious Agent Skills**.
 
 ## Why this project exists
 
@@ -217,45 +209,11 @@ authorization, impact, static reachability, and analysis completeness. A severe
 design defect can therefore be blocked without being mislabeled as an
 intentional malicious attack.
 
-## Community security program
+## Ongoing work
 
-<p align="center">
-  <img src="assets/community-roadmap.svg" alt="Community security roadmap" width="100%" />
-</p>
-
-The next phase is an ecosystem-scale, zero-execution audit of major public
-Agent Skills platforms. The objective is not to maximize alarming flag counts;
-it is to build a reproducible and accountable security feedback loop for
-maintainers, platform operators, researchers, and users.
-
-Planned workflow:
-
-1. Freeze versioned public snapshots with provenance, hashes, timestamps, and
-   license metadata.
-2. Run zero-execution analysis and publish coverage and failure accounting
-   alongside every result.
-3. Independently review high-risk candidates and distinguish malicious intent,
-   severe design defects, legal risks, and scanner uncertainty.
-4. Notify affected maintainers and platforms before public disclosure; do not
-   expose active secrets, operational endpoints, or weaponized payload details.
-5. Publish confirmed advisories, aggregate statistics, reusable rules, and
-   carefully curated benchmark cases for the wider community.
-
-### Roadmap
-
-- [x] Bounded zero-execution package reader
-- [x] Versioned sensitive-object and risk taxonomies
-- [x] Structured model-assisted review with evidence validation
-- [x] Failure-tolerant 200-package benchmark runner
-- [ ] Expand cross-file call and data-flow recovery
-- [ ] Evaluate on a second independently sourced benchmark
-- [ ] Build source- and family-disjoint hard-benign evaluations
-- [ ] Freeze snapshots from major public Skills platforms
-- [ ] Complete independent validation and coordinated disclosure
-- [ ] Release the first ecosystem audit report and confirmed advisory index
-
-Roadmap items are commitments to future work, not claims that a platform scan
-or public finding already exists.
+We are improving cross-file static analysis and validating the detector on
+additional Skill sources. Confirmed ecosystem findings will follow coordinated
+disclosure before public release.
 
 ## Safety and evidence handling
 
