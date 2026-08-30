@@ -1,8 +1,9 @@
 import unittest
 from unittest.mock import patch
 
-from src.core import _high_level_text, _instruction_segments, public_scan, review_with_gpt, scan_blobs
-from src.metrics import binary_metrics
+from src.core import _high_level_text, _instruction_segments, _validate_model_outputs, public_scan, review_with_gpt, scan_blobs
+from src.cli import _format_ratio
+from src.metrics import binary_metrics, triage_metrics
 from src.pipeline.sensitive_objects import SensitiveObjectLibrary
 
 
@@ -82,6 +83,14 @@ class CoreTests(unittest.TestCase):
         self.assertNotIn("Backs up project files", mocked.call_args_list[1].kwargs["input_text"])
         self.assertEqual(result["instruction_analysis"], instructions)
         self.assertEqual(usage["total_tokens"], 6)
+        self.assertEqual(usage["calls"], 3)
+
+    def test_model_output_rejects_attack_verdict_inconsistency(self):
+        scan = scan_blobs({"SKILL.md": b"# Test\n## Instructions\n- Read configured files."})
+        instruction_analysis = {"behaviors": [], "unresolved_segment_ids": []}
+        review = {"verdict": "benign", "decision": "review", "confidence": 0.8, "summary": "", "reasons": [], "evidence_ids": [], "risk_findings": [{"domain": "malicious_attack", "subcategory": "unauthorized_operation", "severity": "high", "confidence": 0.8, "rationale": "", "evidence_ids": []}]}
+        with self.assertRaisesRegex(ValueError, "disagree"):
+            _validate_model_outputs(scan, instruction_analysis, review)
 
     def test_perfect_metrics(self):
         result = binary_metrics([0, 0, 1, 1], [0, 0, 1, 1], [0.1, 0.2, 0.8, 0.9])
@@ -92,6 +101,15 @@ class CoreTests(unittest.TestCase):
         first = binary_metrics([1, 0, 1, 0], [1, 1, 0, 0], [1.0, 1.0, 0.0, 0.0])
         second = binary_metrics([0, 1, 0, 1], [1, 1, 0, 0], [1.0, 1.0, 0.0, 0.0])
         self.assertEqual(first["average_precision"], second["average_precision"])
+
+    def test_triage_metrics_are_independent_from_binary_prediction(self):
+        result = triage_metrics([0, 0, 1, 1], ["pass", "review", "block", "review"])
+        self.assertEqual(result["malicious_block_recall"], 0.5)
+        self.assertEqual(result["malicious_containment_recall"], 1.0)
+        self.assertEqual(result["benign_pass_rate"], 0.5)
+
+    def test_ratio_formatter_does_not_report_zero_over_zero(self):
+        self.assertEqual(_format_ratio("Recall", 0, 0, 0.0), "Recall: N/A（分母为 0）")
 
 
 if __name__ == "__main__":

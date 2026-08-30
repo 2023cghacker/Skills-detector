@@ -14,7 +14,11 @@ from pathlib import Path
 from typing import Any
 
 from .core import DEFAULT_MODEL, DEFAULT_THRESHOLD, GitSnapshot, public_scan, read_directory, review_with_gpt, scan_blobs
-from .metrics import binary_metrics, bootstrap_ci
+from .metrics import binary_metrics, bootstrap_ci, triage_metrics
+
+
+def _format_ratio(label: str, numerator: int, denominator: int, value: float) -> str:
+    return f"{label}: {numerator}/{denominator}（{value:.2%}）" if denominator else f"{label}: N/A（分母为 0）"
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -36,6 +40,8 @@ def _parser() -> argparse.ArgumentParser:
     evaluate.add_argument("--threshold", type=int, default=DEFAULT_THRESHOLD)
     evaluate.add_argument("--output", type=Path)
     evaluate.add_argument("--limit", type=int, default=0)
+    evaluate.add_argument("--per-class-limit", type=int, default=0, help="take the first N sorted samples from each class")
+    evaluate.add_argument("--sample-id", help="evaluate one exact Skill_name from the label index")
     return parser
 
 
@@ -58,10 +64,18 @@ def _scan(args: argparse.Namespace) -> int:
     return 0
 
 
-def _rows(path: Path, limit: int) -> list[dict[str, str]]:
+def _rows(path: Path, limit: int, per_class_limit: int = 0) -> list[dict[str, str]]:
     with path.open(encoding="utf-8-sig", newline="") as handle:
         rows = [row for row in csv.DictReader(handle) if row.get("Label", "").lower() in {"benign", "malicious"}]
     rows.sort(key=lambda row: row["Skill_name"])
+    if per_class_limit:
+        selected = []
+        for label in ("benign", "malicious"):
+            selected.extend(row for row in rows if row["Label"].lower() == label)
+        rows = [
+            row for label in ("benign", "malicious")
+            for row in [item for item in selected if item["Label"].lower() == label][:per_class_limit]
+        ]
     return rows[:limit] if limit else rows
 
 
@@ -69,7 +83,13 @@ def _evaluate(args: argparse.Namespace) -> int:
     if args.mode == "gpt" and not os.getenv("OPENAI_API_KEY"):
         raise RuntimeError("OPENAI_API_KEY is not set")
     labels_path = args.dataset_repo / args.labels_csv
-    rows = _rows(labels_path, args.limit)
+    if sum(bool(value) for value in (args.limit, args.per_class_limit, args.sample_id)) > 1:
+        raise ValueError("use only one of --limit, --per-class-limit, or --sample-id")
+    rows = _rows(labels_path, args.limit, args.per_class_limit)
+    if args.sample_id:
+        rows = [row for row in rows if row["Skill_name"] == args.sample_id]
+        if not rows:
+            raise ValueError(f"unknown sample ID: {args.sample_id}")
     snapshot = GitSnapshot(args.dataset_repo, args.commit)
     output = args.output or Path("runs") / f"{args.mode}-{datetime.now(timezone.utc).strftime('%y%m%d-%H%M%S')}"
     output.mkdir(parents=True, exist_ok=False)
@@ -96,6 +116,7 @@ def _evaluate(args: argparse.Namespace) -> int:
     predictions = [record["verdict"] == "malicious" for record in records]
     scores = [record["score"] if args.mode == "rules" else record["confidence"] * (1 if record["verdict"] == "malicious" else -1) for record in records]
     metrics = binary_metrics([int(x) for x in labels], [int(x) for x in predictions], scores)
+    metrics["triage"] = triage_metrics([int(x) for x in labels], [record["decision"] for record in records])
     metrics["bootstrap_95_ci"] = bootstrap_ci([int(x) for x in labels], [int(x) for x in predictions], scores)
     metrics["coverage"] = {"requested": len(rows), "evaluated": len(records), "truncated": sum(record["truncated"] for record in records)}
     metrics["usage"], metrics["wall_seconds"] = dict(usage_total), time.perf_counter() - started
@@ -103,11 +124,16 @@ def _evaluate(args: argparse.Namespace) -> int:
     (output / "config.json").write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
     (output / "metrics.json").write_text(json.dumps(metrics, indent=2) + "\n", encoding="utf-8")
     matrix = metrics["confusion_matrix"]
+    malicious_total = matrix["tp"] + matrix["fn"]
+    predicted_malicious = matrix["tp"] + matrix["fp"]
+    benign_total = len(records) - sum(labels)
     human = "\n".join((
-        f"Accuracy: {matrix['tp'] + matrix['tn']}/{metrics['n']}（{metrics['accuracy']:.2%}）",
-        f"Malicious Recall: {matrix['tp']}/{matrix['tp'] + matrix['fn']}（{metrics['recall']:.2%}）",
-        f"Precision: {matrix['tp']}/{matrix['tp'] + matrix['fp']}（{metrics['precision']:.2%}）",
+        _format_ratio("Accuracy", matrix["tp"] + matrix["tn"], metrics["n"], metrics["accuracy"]),
+        _format_ratio("Malicious Recall", matrix["tp"], malicious_total, metrics["recall"]),
+        _format_ratio("Precision", matrix["tp"], predicted_malicious, metrics["precision"]),
         f"F1: {metrics['f1']:.2%}",
+        _format_ratio("Malicious BLOCK/REVIEW Coverage", sum(record["ground_truth"] == "malicious" and record["decision"] != "pass" for record in records), malicious_total, metrics["triage"]["malicious_containment_recall"]),
+        _format_ratio("Benign PASS Rate", sum(record["ground_truth"] == "benign" and record["decision"] == "pass" for record in records), benign_total, metrics["triage"]["benign_pass_rate"]),
         "",
     ))
     (output / "metrics.md").write_text(human, encoding="utf-8")

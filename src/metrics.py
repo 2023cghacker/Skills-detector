@@ -63,6 +63,27 @@ def binary_metrics(labels: list[int], predictions: list[int], scores: list[float
     }
 
 
+def triage_metrics(labels: list[int], decisions: list[str]) -> dict[str, Any]:
+    """Measure routing separately from the malicious binary hypothesis."""
+    if len(labels) != len(decisions):
+        raise ValueError("labels and decisions must have the same length")
+    counts = {name: decisions.count(name) for name in ("pass", "review", "block")}
+    malicious = sum(labels)
+    benign = len(labels) - malicious
+    malicious_blocked = sum(label == 1 and decision == "block" for label, decision in zip(labels, decisions))
+    malicious_contained = sum(label == 1 and decision in {"block", "review"} for label, decision in zip(labels, decisions))
+    benign_passed = sum(label == 0 and decision == "pass" for label, decision in zip(labels, decisions))
+    return {
+        "counts": counts,
+        "block_rate": _div(counts["block"], len(labels)),
+        "review_rate": _div(counts["review"], len(labels)),
+        "pass_rate": _div(counts["pass"], len(labels)),
+        "malicious_block_recall": _div(malicious_blocked, malicious),
+        "malicious_containment_recall": _div(malicious_contained, malicious),
+        "benign_pass_rate": _div(benign_passed, benign),
+    }
+
+
 def bootstrap_ci(labels: list[int], predictions: list[int], scores: list[float], rounds: int = 1000, seed: int = 1337) -> dict[str, list[float]]:
     rng = random.Random(seed)
     positive = [i for i, label in enumerate(labels) if label]

@@ -121,6 +121,19 @@ Replace `--mode rules` with `--mode gpt` after setting `OPENAI_API_KEY`.
 Ground-truth labels, source names, registry fields, and label-revealing paths are
 not provided to the detector. They are joined only after prediction.
 
+For bounded diagnostics, select an equal number from each class or one exact
+indexed sample:
+
+```bash
+skills-detector evaluate ... --mode gpt --per-class-limit 3
+skills-detector evaluate ... --mode gpt --sample-id owner/skill-name
+```
+
+Evaluation reports the malicious binary Precision/Recall separately from triage
+metrics: malicious `BLOCK/REVIEW` coverage and benign `PASS` rate. A benchmark
+label of benign means "not labeled malicious" and does not prove that a Skill
+has no design or legal risk.
+
 ## Safety and evidence handling
 
 - Directory scans skip symlinks and dependency/build directories.
