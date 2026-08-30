@@ -52,7 +52,8 @@ The pipeline has four bounded stages:
    extracts the goal, inputs, outputs, object scope, named services, and visible
    effects.
 3. **Static behavior recovery** combines sensitive-object rules, instruction
-   analysis, code/configuration patterns, and bounded behavior paths.
+   analysis, code/configuration patterns, a cross-file Python AST call graph,
+   and fixed-point interprocedural taint summaries.
 4. **Policy review** compares function and behavior while independently
    checking malicious attacks, design defects, and legal or compliance risks.
 
@@ -69,28 +70,38 @@ The original research workflow remains the detailed design reference:
 </p>
 
 The current model-assisted run uses the fixed 200-package MalSkillsBench commit
-`46d60f09cef00fd3a9c01272be63dbd273ab4444`. Four packages remained unresolved
-after bounded retries, leaving a balanced 98 benign / 98 malicious subset.
+`46d60f09cef00fd3a9c01272be63dbd273ab4444`. Three packages remain unresolved
+after bounded retries, leaving 98 benign and 99 malicious packages.
 
-- Evaluation coverage: **196/200 (98.00%)**
-- Accuracy: **153/196 (78.06%)**
-- Malicious precision: **55/55 (100.00%)**
-- Malicious recall: **55/98 (56.12%)**
-- Malicious F1: **71.90%**
-- Benign false-positive rate: **0/98 (0.00%)**
-- Malicious `BLOCK/REVIEW` containment: **98/98 (100.00%)**
-- Review workload: **112/196 (57.14%)**
-- Benign automatic pass: **29/98 (29.59%)**
+- Evaluation coverage: **197/200 (98.50%)**
+- Accuracy: **151/197 (76.65%)**
+- Malicious precision: **54/55 (98.18%)**
+- Malicious recall: **54/99 (54.55%)**
+- Malicious F1: **70.13%**
+- Benign false-positive rate: **1/98 (1.02%)**
+- Malicious `BLOCK/REVIEW` containment: **99/99 (100.00%)**
+- Review workload: **120/197 (60.91%)**
+- Benign automatic pass: **22/98 (22.45%)**
 
-On the same 196 packages, frozen rules achieve 34.78% F1, 28/98 (28.57%)
-malicious recall, and 35/98 (35.71%) false-positive rate. The semantic pipeline
+On the same 197 packages, frozen rules achieve 32.47% F1, 25/99 (25.25%)
+malicious recall, and 30/98 (30.61%) false-positive rate. The semantic pipeline
 therefore improves the paired rule baseline, but its absolute recall and review
-load are not yet sufficient for unattended admission control.
+load are not sufficient for unattended admission control.
+
+The central ablation is negative: removing the independently extracted
+high-level function changes only two of 196 common predictions and slightly
+improves F1 from 70.13% to 71.79% (exact McNemar `p = 0.50`). Aggregate gains
+must therefore not be attributed to that component on this benchmark.
 
 The benchmark's source metadata correlates with its labels. Labels and
 label-revealing paths are withheld from detector input, but the result should
 still be interpreted as in-benchmark discrimination rather than
 source-independent generalization.
+
+A separate repository-matched front-end stress test scans **1,000/1,000**
+indexed Skills from 212 repositories in 352.4 seconds using a 3.253-GiB bounded
+archive cache. Its `safe` / `suspicious` fields are candidate-stage index labels,
+not confirmed ground truth, so the run is not reported as detection accuracy.
 
 ## What is implemented
 
@@ -99,6 +110,9 @@ source-independent generalization.
 - Static operations covering read, enumerate, collect, transmit, execute,
   download, permission change, persistence, concealment, and destructive
   behavior.
+- Cross-file Python AST call resolution and fixed-point interprocedural source-to-sink taint
+  paths, with finite simple call traces and explicit non-convergence, parse
+  failures, unresolved calls, and unsupported language files.
 - Independent declaration, instruction, and final-review model calls with
   closed JSON schemas and evidence-ID validation.
 - DeepSeek V4 Flash as the default model provider, with thinking disabled and
@@ -127,6 +141,9 @@ Python 3.10 or newer is required.
 ```bash
 skills-detector scan path/to/skill --mode rules
 ```
+
+Add `--graph-dot behavior.dot` to export the recovered static graph for
+Graphviz rendering.
 
 ### Enable model-assisted analysis
 
@@ -211,9 +228,8 @@ intentional malicious attack.
 
 ## Ongoing work
 
-We are improving cross-file static analysis and validating the detector on
-additional Skill sources. Confirmed ecosystem findings will follow coordinated
-disclosure before public release.
+We are extending language coverage and validating the detector on additional
+Skill sources. Confirmed ecosystem findings will follow coordinated disclosure.
 
 ## Safety and evidence handling
 

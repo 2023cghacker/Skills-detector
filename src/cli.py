@@ -13,8 +13,10 @@ from pathlib import Path
 from typing import Any
 
 from .core import DEFAULT_THRESHOLD, GitSnapshot, public_scan, read_directory, review_with_model, scan_blobs
+from .ecosystem import ArchiveCache, ecosystem_metrics, resolve_repository_matched_rows, skill_blobs_from_zip
 from .metrics import binary_metrics, bootstrap_ci, triage_metrics
 from .pipeline.model_client import DEFAULT_PROVIDER, default_model, require_api_key
+from .visualize import write_behavior_graph_dot
 
 
 def _format_ratio(label: str, numerator: int, denominator: int, value: float) -> str:
@@ -31,6 +33,7 @@ def _parser() -> argparse.ArgumentParser:
     scan.add_argument("--provider", choices=("deepseek", "openai"), default=DEFAULT_PROVIDER)
     scan.add_argument("--model", help="provider model ID; defaults to the provider's configured model")
     scan.add_argument("--threshold", type=int, default=DEFAULT_THRESHOLD)
+    scan.add_argument("--graph-dot", type=Path, help="write the recovered behavior graph as Graphviz DOT")
 
     evaluate = commands.add_parser("evaluate", help="evaluate a MalSkillsBench checkout")
     evaluate.add_argument("--dataset-repo", type=Path, required=True)
@@ -44,18 +47,41 @@ def _parser() -> argparse.ArgumentParser:
     evaluate.add_argument("--limit", type=int, default=0)
     evaluate.add_argument("--per-class-limit", type=int, default=0, help="take the first N sorted samples from each class")
     evaluate.add_argument("--sample-id", help="evaluate one exact Skill_name from the label index")
+    evaluate.add_argument("--ablation", choices=("none", "no-high-level"), default="none")
+    evaluate.add_argument("--shard-count", type=int, default=1, help="split the sorted benchmark into disjoint shards")
+    evaluate.add_argument("--shard-index", type=int, default=0, help="zero-based shard index")
     evaluate.add_argument("--resume", action="store_true", help="resume an incomplete output directory")
+
+    ecosystem = commands.add_parser("evaluate-ecosystem", help="audit a repository-matched safe/suspicious index sample")
+    ecosystem.add_argument("--index-csv", type=Path, required=True)
+    ecosystem.add_argument("--index-commit", required=True)
+    ecosystem.add_argument("--cache", type=Path, required=True)
+    ecosystem.add_argument("--output", type=Path, required=True)
+    ecosystem.add_argument("--per-label", type=int, default=500)
+    ecosystem.add_argument("--seed", type=int, default=1337)
+    ecosystem.add_argument("--rest-fraction", type=float, default=0.2)
+    ecosystem.add_argument("--per-repo-cap", type=int, default=10)
+    ecosystem.add_argument("--max-download-gib", type=float, default=5.0)
+    ecosystem.add_argument("--cached-only", action="store_true", help="resolve the sample without downloading new archives")
+    ecosystem.add_argument("--mode", choices=("rules", "model", "gpt"), default="rules")
+    ecosystem.add_argument("--provider", choices=("deepseek", "openai"), default=DEFAULT_PROVIDER)
+    ecosystem.add_argument("--model", help="provider model ID; defaults to the provider's configured model")
+    ecosystem.add_argument("--threshold", type=int, default=DEFAULT_THRESHOLD)
+    ecosystem.add_argument("--resume", action="store_true")
     return parser
 
 
 def _predict(
     blobs: dict[str, bytes], mode: str, provider: str, model: str,
-    threshold: int,
+    threshold: int, ablation: str = "none",
 ) -> tuple[dict[str, Any], dict[str, int]]:
     scan = scan_blobs(blobs, threshold=threshold)
     if mode == "rules":
         return scan, {}
-    review, usage = review_with_model(scan, model=model, provider=provider)
+    review, usage = review_with_model(
+        scan, model=model, provider=provider,
+        include_declaration=ablation != "no-high-level",
+    )
     scan["verdict"], scan["decision"], scan["confidence"], scan["review"] = review["verdict"], review["decision"], review["confidence"], review
     return scan, usage
 
@@ -65,6 +91,8 @@ def _scan(args: argparse.Namespace) -> int:
     if args.mode != "rules":
         require_api_key(args.provider)
     result, usage = _predict(read_directory(args.path), args.mode, args.provider, model, args.threshold)
+    if args.graph_dot:
+        write_behavior_graph_dot(result, args.graph_dot)
     output = public_scan(result)
     output["usage"] = usage
     print(json.dumps(output, indent=2, ensure_ascii=False))
@@ -88,6 +116,7 @@ def _rows(path: Path, limit: int, per_class_limit: int = 0) -> list[dict[str, st
 
 def _evaluate(args: argparse.Namespace) -> int:
     model = args.model or default_model(args.provider)
+    ablation = getattr(args, "ablation", "none")
     if args.mode != "rules":
         require_api_key(args.provider)
     labels_path = args.dataset_repo / args.labels_csv
@@ -98,6 +127,11 @@ def _evaluate(args: argparse.Namespace) -> int:
         rows = [row for row in rows if row["Skill_name"] == args.sample_id]
         if not rows:
             raise ValueError(f"unknown sample ID: {args.sample_id}")
+    shard_count = getattr(args, "shard_count", 1)
+    shard_index = getattr(args, "shard_index", 0)
+    if shard_count < 1 or not 0 <= shard_index < shard_count:
+        raise ValueError("require shard-count >= 1 and 0 <= shard-index < shard-count")
+    rows = [row for index, row in enumerate(rows) if index % shard_count == shard_index]
     snapshot = GitSnapshot(args.dataset_repo, args.commit)
     run_name = args.mode if args.mode == "rules" else f"{args.provider}-{model}"
     output = args.output or Path("runs") / f"{run_name}-{datetime.now(timezone.utc).strftime('%y%m%d-%H%M%S')}"
@@ -119,7 +153,7 @@ def _evaluate(args: argparse.Namespace) -> int:
         usage_total.update(record.get("usage", {}))
     started = time.perf_counter()
 
-    config = {"mode": args.mode, "provider": args.provider if args.mode != "rules" else None, "model": model if args.mode != "rules" else None, "model_calls_per_package_nominal_max": 5 if args.mode != "rules" else 0, "stage_semantic_attempts_max": 3 if args.mode != "rules" else 0, "sample_error_policy": "record_and_continue", "threshold": args.threshold, "commit": args.commit, "samples": len(rows), "zero_execution": True}
+    config = {"mode": args.mode, "provider": args.provider if args.mode != "rules" else None, "model": model if args.mode != "rules" else None, "ablation": ablation, "behavior_engine": "python_ast_interprocedural_v1", "model_calls_per_package_nominal_max": 5 if args.mode != "rules" else 0, "stage_semantic_attempts_max": 3 if args.mode != "rules" else 0, "sample_error_policy": "record_and_continue", "threshold": args.threshold, "commit": args.commit, "samples": len(rows), "shard_count": shard_count, "shard_index": shard_index, "zero_execution": True}
     config_path = output / "config.json"
     if args.resume and config_path.exists() and json.loads(config_path.read_text(encoding="utf-8")) != config:
         raise ValueError("resume configuration does not match the existing run")
@@ -134,7 +168,7 @@ def _evaluate(args: argparse.Namespace) -> int:
             blobs = snapshot.package(prefix)
             if not any(Path(name).name.lower() == "skill.md" for name in blobs):
                 raise RuntimeError(f"snapshot contains no SKILL.md for row {index}")
-            result, usage = _predict(blobs, args.mode, args.provider, model, args.threshold)
+            result, usage = _predict(blobs, args.mode, args.provider, model, args.threshold, ablation)
         except Exception as exc:
             failure_attempts[row["Skill_name"]] += 1
             failure = {"sample_id": row["Skill_name"], "index": index, "attempt": failure_attempts[row["Skill_name"]], "completed": len(records), "error_type": type(exc).__name__, "error": str(exc)[:1000], "time_utc": datetime.now(timezone.utc).isoformat()}
@@ -183,10 +217,111 @@ def _evaluate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _ecosystem_sample_id(row: dict[str, str]) -> str:
+    return f"{row['source']}:{row['repo']}:{row['skill_name']}"
+
+
+def _evaluate_ecosystem(args: argparse.Namespace) -> int:
+    model = args.model or default_model(args.provider)
+    if args.mode != "rules":
+        require_api_key(args.provider)
+    if args.output.exists() and not args.resume:
+        raise ValueError(f"output directory already exists: {args.output}; use --resume")
+    args.output.mkdir(parents=True, exist_ok=True)
+    cache = ArchiveCache(args.cache, total_budget=int(args.max_download_gib * 1024 ** 3))
+    manifest_path = args.output / "sample_manifest.jsonl"
+    if args.resume:
+        if not manifest_path.exists():
+            raise ValueError("resume requires an existing sample manifest")
+        rows = [json.loads(line) for line in manifest_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    else:
+        rows, repository_failures = resolve_repository_matched_rows(
+            args.index_csv, cache, per_label=args.per_label, seed=args.seed,
+            rest_fraction=args.rest_fraction, per_repo_cap=args.per_repo_cap,
+            cached_only=args.cached_only,
+        )
+        manifest_path.write_text("".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows), encoding="utf-8")
+        (args.output / "repository_failures.jsonl").write_text(
+            "".join(json.dumps(item, ensure_ascii=False) + "\n" for item in repository_failures),
+            encoding="utf-8",
+        )
+    config = {
+        "dataset": "MaliciousAgentSkillsBench", "index_commit": args.index_commit,
+        "sampling": "repository-matched safe/suspicious", "per_label": args.per_label,
+        "seed": args.seed, "rest_fraction": args.rest_fraction,
+        "per_repo_cap": args.per_repo_cap, "mode": args.mode,
+        "provider": args.provider if args.mode != "rules" else None,
+        "model": model if args.mode != "rules" else None,
+        "threshold": args.threshold, "max_download_gib": args.max_download_gib,
+        "behavior_engine": "python_ast_interprocedural_v1",
+        "cached_only": args.cached_only,
+        "zero_execution": True, "label_warning": "suspicious is not malicious ground truth",
+    }
+    config_path = args.output / "config.json"
+    if args.resume and config_path.exists() and json.loads(config_path.read_text(encoding="utf-8")) != config:
+        raise ValueError("resume configuration does not match the existing ecosystem run")
+    config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+    predictions_path = args.output / "predictions.jsonl"
+    failures_path = args.output / "failures.jsonl"
+    records = [json.loads(line) for line in predictions_path.read_text(encoding="utf-8").splitlines() if line.strip()] if args.resume and predictions_path.exists() else []
+    failures = [json.loads(line) for line in failures_path.read_text(encoding="utf-8").splitlines() if line.strip()] if failures_path.exists() else []
+    completed = {record["sample_id"] for record in records}
+    failure_attempts = Counter(item["sample_id"] for item in failures)
+    usage_total = Counter()
+    for record in records:
+        usage_total.update(record.get("usage", {}))
+    started = time.perf_counter()
+    for index, row in enumerate(rows, 1):
+        sample_id = _ecosystem_sample_id(row)
+        if sample_id in completed:
+            print(f"[{index:04d}/{len(rows):04d}] {sample_id} -> resumed", flush=True)
+            continue
+        try:
+            archive, archive_sha256, archive_bytes = cache.fetch(row["url"])
+            blobs = skill_blobs_from_zip(archive, row["skill_name"])
+            result, usage = _predict(blobs, args.mode, args.provider, model, args.threshold)
+        except Exception as exc:
+            failure_attempts[sample_id] += 1
+            failure = {
+                "sample_id": sample_id, "index": index, "attempt": failure_attempts[sample_id],
+                "error_type": type(exc).__name__, "error": str(exc)[:1000],
+                "time_utc": datetime.now(timezone.utc).isoformat(),
+            }
+            failures.append(failure)
+            with failures_path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(failure, ensure_ascii=False) + "\n")
+            print(f"[{index:04d}/{len(rows):04d}] {sample_id} -> ERROR; continuing", flush=True)
+            continue
+        usage_total.update(usage)
+        record = public_scan(result) | {
+            "sample_id": sample_id, "source": row["source"], "repo": row["repo"],
+            "skill_name": row["skill_name"], "dataset_class": row["classification"],
+            "archive_sha256": archive_sha256, "archive_bytes": archive_bytes, "usage": usage,
+        }
+        records.append(record)
+        with predictions_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+        print(f"[{index:04d}/{len(rows):04d}] {sample_id} -> {result['decision']}", flush=True)
+
+    metrics = ecosystem_metrics(records, len(rows), failures)
+    metrics["usage"] = dict(usage_total)
+    metrics["wall_seconds"] = time.perf_counter() - started
+    metrics["archive_cache_bytes"] = cache.used
+    metrics["unique_repositories_requested"] = len({row["url"] for row in rows})
+    metrics["unique_archives_cached"] = len(list(args.cache.glob("*.zip")))
+    (args.output / "metrics.json").write_text(json.dumps(metrics, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(metrics, indent=2))
+    return 0
+
+
 def main() -> int:
     args = _parser().parse_args()
     try:
-        return _scan(args) if args.command == "scan" else _evaluate(args)
+        if args.command == "scan":
+            return _scan(args)
+        if args.command == "evaluate-ecosystem":
+            return _evaluate_ecosystem(args)
+        return _evaluate(args)
     except (OSError, RuntimeError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
