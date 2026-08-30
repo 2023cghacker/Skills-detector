@@ -10,7 +10,10 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 authors = [{name = "2023cghacker"}]
-dependencies = []
+dependencies = [
+    "jsonschema>=4.17,<5",
+    "openai>=3.6,<4",
+]
 
 [project.scripts]
 skills-detector = "src.cli:main"

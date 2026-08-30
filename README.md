@@ -2,7 +2,7 @@
 
 A compact, zero-execution detector for malicious Agent Skills. It reads Skill
 instructions, code, and configuration as untrusted bytes, extracts
-security-relevant evidence, and optionally asks a GPT model for a constrained
+security-relevant evidence, and optionally asks a model for a constrained
 semantic verdict. It never installs dependencies, imports target modules, or
 executes Skill content.
 
@@ -17,8 +17,8 @@ extraction and static behavior extraction.
 - Deterministic rules for concealment, credential access, network transfer,
   process execution, obfuscation, persistence, privilege use, and destructive
   behavior.
-- A constrained OpenAI Responses API reviewer that receives only bounded static
-  evidence and returns strict JSON.
+- A provider-isolated model reviewer. DeepSeek V4 Flash is the default; OpenAI
+  remains an optional fallback. Both receive only bounded static evidence.
 - MalSkillsBench evaluation with Precision, Recall, F1, FPR, Accuracy, Balanced
   Accuracy, MCC, ROC-AUC, Average Precision, confusion matrix, and bootstrap
   confidence intervals.
@@ -41,7 +41,7 @@ or `execute_process`. The resulting record has the form
 evidence IDs. These bounded static paths are hypotheses, not claims that a path
 is reachable at runtime.
 
-GPT mode uses three isolated structured calls. The first receives only selected
+Model mode uses three isolated structured calls. The first receives only selected
 descriptive prose and extracts the declared goal, inputs, outputs, scope,
 resources, services, and visible side effects. The second receives only bounded
 operational instruction segments and extracts requested actions, objects,
@@ -77,8 +77,8 @@ python -m venv .venv
 python -m pip install -e .
 ```
 
-Python 3.10 or newer is required. The project has no third-party runtime
-dependencies.
+Python 3.10 or newer is required. Installation places the OpenAI-compatible SDK
+and the local JSON Schema validator inside the project virtual environment.
 
 ## Scan one Skill
 
@@ -86,21 +86,32 @@ dependencies.
 skills-detector scan path/to/skill --mode rules
 ```
 
-For GPT-assisted review, set the key outside the repository:
+For model-assisted review, set the DeepSeek key outside the repository:
 
 ```bash
-export OPENAI_API_KEY="..."
-skills-detector scan path/to/skill --mode gpt
+export DEEPSEEK_API_KEY="..."
+skills-detector scan path/to/skill --mode model
 ```
 
 PowerShell:
 
 ```powershell
-$env:OPENAI_API_KEY="..."
-skills-detector scan path/to/skill --mode gpt
+$env:DEEPSEEK_API_KEY="..."
+skills-detector scan path/to/skill --mode model
 ```
 
-The default model is `gpt-5.4-mini-2026-03-17`. Override it with `--model`.
+The default provider/model is `deepseek` / `deepseek-v4-flash`. The DeepSeek
+calls use JSON-output mode, high reasoning effort, and explicit thinking; every
+returned object is validated locally against the stage's JSON Schema. Override
+the defaults with `--provider` and `--model`. The legacy `--mode gpt` spelling
+remains accepted as an alias for `--mode model`.
+
+To use the OpenAI fallback:
+
+```bash
+export OPENAI_API_KEY="..."
+skills-detector scan path/to/skill --mode model --provider openai
+```
 
 ## Evaluate MalSkillsBench
 
@@ -117,7 +128,7 @@ skills-detector evaluate \
   --output runs/rules-v0
 ```
 
-Replace `--mode rules` with `--mode gpt` after setting `OPENAI_API_KEY`.
+Replace `--mode rules` with `--mode model` after setting `DEEPSEEK_API_KEY`.
 Ground-truth labels, source names, registry fields, and label-revealing paths are
 not provided to the detector. They are joined only after prediction.
 
@@ -125,8 +136,8 @@ For bounded diagnostics, select an equal number from each class or one exact
 indexed sample:
 
 ```bash
-skills-detector evaluate ... --mode gpt --per-class-limit 3
-skills-detector evaluate ... --mode gpt --sample-id owner/skill-name
+skills-detector evaluate ... --mode model --per-class-limit 3
+skills-detector evaluate ... --mode model --sample-id owner/skill-name
 ```
 
 Predictions are appended after every completed package. If a rate limit or

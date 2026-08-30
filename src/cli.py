@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import os
 import sys
 import time
 from collections import Counter
@@ -13,8 +12,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .core import DEFAULT_MODEL, DEFAULT_THRESHOLD, GitSnapshot, public_scan, read_directory, review_with_gpt, scan_blobs
+from .core import DEFAULT_THRESHOLD, GitSnapshot, public_scan, read_directory, review_with_model, scan_blobs
 from .metrics import binary_metrics, bootstrap_ci, triage_metrics
+from .pipeline.model_client import DEFAULT_PROVIDER, default_model, require_api_key
 
 
 def _format_ratio(label: str, numerator: int, denominator: int, value: float) -> str:
@@ -27,16 +27,18 @@ def _parser() -> argparse.ArgumentParser:
 
     scan = commands.add_parser("scan", help="scan one local Skill directory")
     scan.add_argument("path", type=Path)
-    scan.add_argument("--mode", choices=("rules", "gpt"), default="rules")
-    scan.add_argument("--model", default=DEFAULT_MODEL)
+    scan.add_argument("--mode", choices=("rules", "model", "gpt"), default="rules")
+    scan.add_argument("--provider", choices=("deepseek", "openai"), default=DEFAULT_PROVIDER)
+    scan.add_argument("--model", help="provider model ID; defaults to the provider's configured model")
     scan.add_argument("--threshold", type=int, default=DEFAULT_THRESHOLD)
 
     evaluate = commands.add_parser("evaluate", help="evaluate a MalSkillsBench checkout")
     evaluate.add_argument("--dataset-repo", type=Path, required=True)
     evaluate.add_argument("--commit", required=True)
     evaluate.add_argument("--labels-csv", default="data/ground_truth/ground_truth_final.csv")
-    evaluate.add_argument("--mode", choices=("rules", "gpt"), default="rules")
-    evaluate.add_argument("--model", default=DEFAULT_MODEL)
+    evaluate.add_argument("--mode", choices=("rules", "model", "gpt"), default="rules")
+    evaluate.add_argument("--provider", choices=("deepseek", "openai"), default=DEFAULT_PROVIDER)
+    evaluate.add_argument("--model", help="provider model ID; defaults to the provider's configured model")
     evaluate.add_argument("--threshold", type=int, default=DEFAULT_THRESHOLD)
     evaluate.add_argument("--output", type=Path)
     evaluate.add_argument("--limit", type=int, default=0)
@@ -46,19 +48,23 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _predict(blobs: dict[str, bytes], mode: str, model: str, threshold: int) -> tuple[dict[str, Any], dict[str, int]]:
+def _predict(
+    blobs: dict[str, bytes], mode: str, provider: str, model: str,
+    threshold: int,
+) -> tuple[dict[str, Any], dict[str, int]]:
     scan = scan_blobs(blobs, threshold=threshold)
     if mode == "rules":
         return scan, {}
-    review, usage = review_with_gpt(scan, model=model)
+    review, usage = review_with_model(scan, model=model, provider=provider)
     scan["verdict"], scan["decision"], scan["confidence"], scan["review"] = review["verdict"], review["decision"], review["confidence"], review
     return scan, usage
 
 
 def _scan(args: argparse.Namespace) -> int:
-    if args.mode == "gpt" and not os.getenv("OPENAI_API_KEY"):
-        raise RuntimeError("OPENAI_API_KEY is not set")
-    result, usage = _predict(read_directory(args.path), args.mode, args.model, args.threshold)
+    model = args.model or default_model(args.provider)
+    if args.mode != "rules":
+        require_api_key(args.provider)
+    result, usage = _predict(read_directory(args.path), args.mode, args.provider, model, args.threshold)
     output = public_scan(result)
     output["usage"] = usage
     print(json.dumps(output, indent=2, ensure_ascii=False))
@@ -81,8 +87,9 @@ def _rows(path: Path, limit: int, per_class_limit: int = 0) -> list[dict[str, st
 
 
 def _evaluate(args: argparse.Namespace) -> int:
-    if args.mode == "gpt" and not os.getenv("OPENAI_API_KEY"):
-        raise RuntimeError("OPENAI_API_KEY is not set")
+    model = args.model or default_model(args.provider)
+    if args.mode != "rules":
+        require_api_key(args.provider)
     labels_path = args.dataset_repo / args.labels_csv
     if sum(bool(value) for value in (args.limit, args.per_class_limit, args.sample_id)) > 1:
         raise ValueError("use only one of --limit, --per-class-limit, or --sample-id")
@@ -92,7 +99,8 @@ def _evaluate(args: argparse.Namespace) -> int:
         if not rows:
             raise ValueError(f"unknown sample ID: {args.sample_id}")
     snapshot = GitSnapshot(args.dataset_repo, args.commit)
-    output = args.output or Path("runs") / f"{args.mode}-{datetime.now(timezone.utc).strftime('%y%m%d-%H%M%S')}"
+    run_name = args.mode if args.mode == "rules" else f"{args.provider}-{model}"
+    output = args.output or Path("runs") / f"{run_name}-{datetime.now(timezone.utc).strftime('%y%m%d-%H%M%S')}"
     if output.exists() and not args.resume:
         raise ValueError(f"output directory already exists: {output}; use --resume for an incomplete run")
     output.mkdir(parents=True, exist_ok=True)
@@ -106,7 +114,7 @@ def _evaluate(args: argparse.Namespace) -> int:
         usage_total.update(record.get("usage", {}))
     started = time.perf_counter()
 
-    config = {"mode": args.mode, "model": args.model if args.mode == "gpt" else None, "model_calls_per_package_max": 3 if args.mode == "gpt" else 0, "threshold": args.threshold, "commit": args.commit, "samples": len(rows), "zero_execution": True}
+    config = {"mode": args.mode, "provider": args.provider if args.mode != "rules" else None, "model": model if args.mode != "rules" else None, "model_calls_per_package_max": 3 if args.mode != "rules" else 0, "threshold": args.threshold, "commit": args.commit, "samples": len(rows), "zero_execution": True}
     config_path = output / "config.json"
     if args.resume and config_path.exists() and json.loads(config_path.read_text(encoding="utf-8")) != config:
         raise ValueError("resume configuration does not match the existing run")
@@ -121,7 +129,7 @@ def _evaluate(args: argparse.Namespace) -> int:
         if not any(Path(name).name.lower() == "skill.md" for name in blobs):
             raise RuntimeError(f"snapshot contains no SKILL.md for row {index}")
         try:
-            result, usage = _predict(blobs, args.mode, args.model, args.threshold)
+            result, usage = _predict(blobs, args.mode, args.provider, model, args.threshold)
         except Exception as exc:
             failure = {"sample_id": row["Skill_name"], "index": index, "completed": len(records), "error_type": type(exc).__name__, "error": str(exc)[:1000], "time_utc": datetime.now(timezone.utc).isoformat()}
             (output / "failure.json").write_text(json.dumps(failure, indent=2) + "\n", encoding="utf-8")
