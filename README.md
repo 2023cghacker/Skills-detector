@@ -101,8 +101,9 @@ skills-detector scan path/to/skill --mode model
 ```
 
 The default provider/model is `deepseek` / `deepseek-v4-flash`. The DeepSeek
-calls use JSON-output mode, high reasoning effort, and explicit thinking; every
-returned object is validated locally against the stage's JSON Schema. Override
+calls explicitly disable thinking, set temperature to zero, and use JSON-output
+mode; every returned object is validated
+locally against the stage's JSON Schema. Override
 the defaults with `--provider` and `--model`. The legacy `--mode gpt` spelling
 remains accepted as an alias for `--mode model`.
 

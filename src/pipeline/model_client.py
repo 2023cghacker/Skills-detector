@@ -76,25 +76,42 @@ def _deepseek_request(
         max_retries=2,
     )
     schema_text = json.dumps(schema, ensure_ascii=False, separators=(",", ":"))
-    response = client.chat.completions.create(
-        model=model,
-        messages=[
-            {
-                "role": "system",
-                "content": instructions
-                + "\nReturn one JSON object matching this JSON Schema exactly:\n"
-                + schema_text,
-            },
-            {"role": "user", "content": input_text},
-        ],
-        response_format={"type": "json_object"},
-        stream=False,
-        max_tokens=max_output_tokens,
-        reasoning_effort="high",
-        extra_body={"thinking": {"type": "enabled"}},
+    messages = [
+        {
+            "role": "system",
+            "content": instructions
+            + "\nReturn one JSON object matching this JSON Schema exactly:\n"
+            + schema_text,
+        },
+        {"role": "user", "content": input_text},
+    ]
+    accumulated = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+    last_error: ValueError | None = None
+    last_finish_reason = "unknown"
+    for _ in range(2):
+        response = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            response_format={"type": "json_object"},
+            stream=False,
+            max_tokens=max_output_tokens,
+            temperature=0,
+            extra_body={"thinking": {"type": "disabled"}},
+        )
+        call_usage = _usage_values(response.usage, chat=True)
+        for name, value in call_usage.items():
+            accumulated[name] += value
+        choice = response.choices[0]
+        last_finish_reason = str(getattr(choice, "finish_reason", "unknown"))
+        try:
+            result = _decode_and_validate(choice.message.content, schema)
+            return result, accumulated
+        except ValueError as exc:
+            last_error = exc
+    raise ValueError(
+        f"DeepSeek returned no schema-valid JSON after 2 attempts "
+        f"(finish_reason={last_finish_reason}): {last_error}"
     )
-    result = _decode_and_validate(response.choices[0].message.content, schema)
-    return result, _usage_values(response.usage, chat=True)
 
 
 def _openai_request(
