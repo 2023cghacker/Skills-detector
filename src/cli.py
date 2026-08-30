@@ -99,7 +99,7 @@ def _evaluate(args: argparse.Namespace) -> int:
     metrics["bootstrap_95_ci"] = bootstrap_ci([int(x) for x in labels], [int(x) for x in predictions], scores)
     metrics["coverage"] = {"requested": len(rows), "evaluated": len(records), "truncated": sum(record["truncated"] for record in records)}
     metrics["usage"], metrics["wall_seconds"] = dict(usage_total), time.perf_counter() - started
-    config = {"mode": args.mode, "model": args.model if args.mode == "gpt" else None, "threshold": args.threshold, "commit": args.commit, "samples": len(rows), "zero_execution": True}
+    config = {"mode": args.mode, "model": args.model if args.mode == "gpt" else None, "model_calls_per_package_max": 3 if args.mode == "gpt" else 0, "threshold": args.threshold, "commit": args.commit, "samples": len(rows), "zero_execution": True}
     (output / "config.json").write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
     (output / "metrics.json").write_text(json.dumps(metrics, indent=2) + "\n", encoding="utf-8")
     matrix = metrics["confusion_matrix"]

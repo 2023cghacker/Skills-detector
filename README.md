@@ -41,11 +41,15 @@ or `execute_process`. The resulting record has the form
 evidence IDs. These bounded static paths are hypotheses, not claims that a path
 is reachable at runtime.
 
-In GPT mode, the model first receives only selected descriptive prose and emits
-a strict declaration schema (goal, inputs, outputs, scope, resources, services,
-and visible side effects). A separate review call compares that declaration
-with bounded static evidence and returns a binary benchmark verdict plus an
-operational `pass/review/block` decision. Target Skill content is never run.
+GPT mode uses three isolated structured calls. The first receives only selected
+descriptive prose and extracts the declared goal, inputs, outputs, scope,
+resources, services, and visible side effects. The second receives only bounded
+operational instruction segments and extracts requested actions, objects,
+destinations, authorization, visibility, conditionality, and evidence segment
+IDs; it does not classify maliciousness. The final call receives both structured
+views plus bounded static code/configuration evidence and returns a binary
+benchmark verdict and `pass/review/block`. Target Skill content is never run,
+and raw instruction segments are not persisted in result files.
 
 ## Review taxonomy
 
