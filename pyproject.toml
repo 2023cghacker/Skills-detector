@@ -13,7 +13,8 @@ authors = [{name = "2023cghacker"}]
 dependencies = []
 
 [project.scripts]
-skills-detector = "skills_detector.cli:main"
+skills-detector = "src.cli:main"
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["."]
+include = ["src*"]

@@ -80,3 +80,23 @@ python -m unittest discover -s tests -v
 
 This repository contains detector code only. Datasets, API credentials, and
 experiment outputs must remain outside version control.
+
+## Repository layout
+
+```text
+Skills-detector/
+├── data/
+│   ├── downloaded/    # downloaded raw datasets; contents ignored
+│   └── library/       # normalized local corpus; contents ignored
+├── runs/              # generated experiment outputs; contents ignored
+├── src/
+│   ├── pipeline/      # detector stages
+│   ├── tools/         # static-analysis adapters
+│   ├── cli.py
+│   ├── core.py
+│   └── metrics.py
+└── tests/
+```
+
+Project modules live directly under `src/`; do not add another package layer
+such as `src/skills_detector/`.

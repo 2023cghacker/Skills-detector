@@ -15,11 +15,15 @@ venv/
 .env.*
 !.env.example
 
-# Untrusted datasets and generated results
-data/
+# Untrusted datasets and generated results. Keep the planned directory tree.
+data/downloaded/*
+!data/downloaded/.gitkeep
+data/library/*
+!data/library/.gitkeep
 datasets/
 artifacts/
-runs/
+runs/*
+!runs/.gitkeep
 results/
 output/
 *.jsonl

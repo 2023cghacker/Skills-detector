@@ -1,7 +1,7 @@
 import unittest
 
-from skills_detector.core import public_scan, scan_blobs
-from skills_detector.metrics import binary_metrics
+from src.core import public_scan, scan_blobs
+from src.metrics import binary_metrics
 
 
 class CoreTests(unittest.TestCase):
