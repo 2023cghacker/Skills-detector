@@ -129,6 +129,11 @@ skills-detector evaluate ... --mode gpt --per-class-limit 3
 skills-detector evaluate ... --mode gpt --sample-id owner/skill-name
 ```
 
+Predictions are appended after every completed package. If a rate limit or
+network failure interrupts a run, repeat the identical command with `--resume`;
+the evaluator verifies the stored configuration and skips completed sample IDs.
+Failures are recorded in `failure.json` without deleting partial predictions.
+
 Evaluation reports the malicious binary Precision/Recall separately from triage
 metrics: malicious `BLOCK/REVIEW` coverage and benign `PASS` rate. A benchmark
 label of benign means "not labeled malicious" and does not prove that a Skill
