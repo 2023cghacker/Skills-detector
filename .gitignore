@@ -21,6 +21,7 @@ data/downloaded/*
 data/library/*
 !data/library/.gitkeep
 !data/library/sensitive_objects.json
+!data/library/risk_taxonomy.json
 datasets/
 artifacts/
 runs/*

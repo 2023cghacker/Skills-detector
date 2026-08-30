@@ -44,7 +44,7 @@ def _predict(blobs: dict[str, bytes], mode: str, model: str, threshold: int) -> 
     if mode == "rules":
         return scan, {}
     review, usage = review_with_gpt(scan, model=model)
-    scan["verdict"], scan["confidence"], scan["review"] = review["verdict"], review["confidence"], review
+    scan["verdict"], scan["decision"], scan["confidence"], scan["review"] = review["verdict"], review["decision"], review["confidence"], review
     return scan, usage
 
 

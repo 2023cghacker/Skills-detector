@@ -47,6 +47,22 @@ and visible side effects). A separate review call compares that declaration
 with bounded static evidence and returns a binary benchmark verdict plus an
 operational `allow/review/block` decision. Target Skill content is never run.
 
+## Review taxonomy
+
+`data/library/risk_taxonomy.json` separates three multi-label domains:
+
+- malicious attacks: instruction injection or hijacking, information theft,
+  resource destruction or leakage, and unauthorized operations;
+- design defects: sensitive-information protection, input handling,
+  authentication and authorization, and runtime environment;
+- legal and compliance risks: copyright, privacy, compliance requirements, and
+  certificates or licenses.
+
+Only sufficiently supported malicious-attack evidence maps to the benchmark's
+`malicious` class. A design or legal finding alone produces `review`, preventing
+these qualitatively different risks from being counted as malicious samples.
+Every model finding must cite static evidence IDs.
+
 ## Install
 
 ```bash
@@ -67,6 +83,13 @@ For GPT-assisted review, set the key outside the repository:
 
 ```bash
 export OPENAI_API_KEY="..."
+skills-detector scan path/to/skill --mode gpt
+```
+
+PowerShell:
+
+```powershell
+$env:OPENAI_API_KEY="..."
 skills-detector scan path/to/skill --mode gpt
 ```
 
