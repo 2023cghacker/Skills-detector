@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="560" viewBox="0 0 1200 560" role="img" aria-labelledby="title desc">
+  <title id="title">Current MalSkillsBench results</title>
+  <desc id="desc">Comparison of frozen rules and function behavior analysis on 196 successfully analyzed packages.</desc>
+  <rect width="1200" height="560" rx="26" fill="#0b1220"/>
+  <g font-family="Inter,Segoe UI,Arial,sans-serif">
+    <text x="60" y="62" font-size="29" font-weight="800" fill="#f8fafc">Current benchmark snapshot</text>
+    <text x="60" y="94" font-size="16" fill="#94a3b8">MalSkillsBench · fixed commit · 196/200 schema-valid packages · zero target execution</text>
+    <g transform="translate(60 145)">
+      <g stroke="#334155" stroke-width="1"><path d="M215 0V300M390 0V300M565 0V300M740 0V300M915 0V300"/></g>
+      <g fill="#94a3b8" font-size="13"><text x="205" y="325">0%</text><text x="375" y="325">25%</text><text x="550" y="325">50%</text><text x="725" y="325">75%</text><text x="895" y="325">100%</text></g>
+      <g fill="#e2e8f0" font-size="17" font-weight="700"><text x="0" y="45">Precision</text><text x="0" y="115">Recall</text><text x="0" y="185">F1</text><text x="0" y="255">False-positive rate</text></g>
+      <g fill="#475569"><rect x="215" y="20" width="311.1" height="18" rx="9"/><rect x="215" y="90" width="200" height="18" rx="9"/><rect x="215" y="160" width="243.5" height="18" rx="9"/><rect x="215" y="230" width="250" height="18" rx="9"/></g>
+      <g fill="#22d3ee"><rect x="215" y="42" width="700" height="22" rx="11"/><rect x="215" y="112" width="392.8" height="22" rx="11"/><rect x="215" y="182" width="503.3" height="22" rx="11"/><rect x="215" y="252" width="0" height="22" rx="11"/></g>
+      <g fill="#cbd5e1" font-size="14"><text x="535" y="35">44.44%</text><text x="424" y="105">28.57%</text><text x="467" y="175">34.78%</text><text x="474" y="245">35.71%</text></g>
+      <g fill="#67e8f9" font-size="15" font-weight="800"><text x="927" y="59">100.00%</text><text x="620" y="129">56.12%</text><text x="730" y="199">71.90%</text><text x="227" y="269">0.00%</text></g>
+    </g>
+    <g transform="translate(62 500)" font-size="15"><rect width="18" height="18" rx="4" fill="#475569"/><text x="29" y="15" fill="#cbd5e1">Frozen rules</text><rect x="180" width="18" height="18" rx="4" fill="#22d3ee"/><text x="209" y="15" fill="#cbd5e1">Function–behavior analysis</text><text x="750" y="15" fill="#94a3b8">TP=55 · FP=0 · TN=98 · FN=43</text></g>
+  </g>
+</svg>

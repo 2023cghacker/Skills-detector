@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="520" viewBox="0 0 1200 520" role="img" aria-labelledby="title desc">
+  <title id="title">Skills Detector zero-execution architecture</title>
+  <desc id="desc">A Skill package is parsed into independent declaration and behavior views, then reviewed with policy evidence.</desc>
+  <defs>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#f8fafc"/><stop offset="1" stop-color="#eef2ff"/></linearGradient>
+    <filter id="s"><feDropShadow dx="0" dy="5" stdDeviation="7" flood-color="#0f172a" flood-opacity=".12"/></filter>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0 0 9 3 0 6Z" fill="#475569"/></marker>
+  </defs>
+  <rect width="1200" height="520" rx="26" fill="#f1f5f9"/>
+  <text x="60" y="58" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="28" font-weight="800" fill="#0f172a">One package. Two independent views. One evidence-grounded decision.</text>
+  <g font-family="Inter,Segoe UI,Arial,sans-serif" filter="url(#s)">
+    <rect x="55" y="178" width="160" height="120" rx="22" fill="#fff7ed" stroke="#f97316" stroke-width="2"/>
+    <text x="135" y="220" text-anchor="middle" font-size="20" font-weight="800" fill="#9a3412">UNTRUSTED</text>
+    <text x="135" y="248" text-anchor="middle" font-size="20" font-weight="800" fill="#9a3412">SKILL</text>
+    <text x="135" y="276" text-anchor="middle" font-size="14" fill="#7c2d12">instructions · code · config</text>
+    <rect x="275" y="178" width="170" height="120" rx="22" fill="url(#panel)" stroke="#6366f1" stroke-width="2"/>
+    <text x="360" y="224" text-anchor="middle" font-size="20" font-weight="800" fill="#312e81">SAFE PARSING</text>
+    <text x="360" y="252" text-anchor="middle" font-size="14" fill="#475569">bounded byte reads</text>
+    <text x="360" y="276" text-anchor="middle" font-size="14" fill="#475569">artifact separation</text>
+    <rect x="510" y="102" width="225" height="120" rx="22" fill="#ecfeff" stroke="#0891b2" stroke-width="2"/>
+    <text x="622" y="145" text-anchor="middle" font-size="19" font-weight="800" fill="#155e75">HIGH-LEVEL FUNCTION</text>
+    <text x="622" y="174" text-anchor="middle" font-size="14" fill="#475569">goal · I/O · scope</text>
+    <text x="622" y="198" text-anchor="middle" font-size="14" fill="#475569">services · visible effects</text>
+    <rect x="510" y="275" width="225" height="145" rx="22" fill="#eef2ff" stroke="#4f46e5" stroke-width="2"/>
+    <text x="622" y="316" text-anchor="middle" font-size="19" font-weight="800" fill="#3730a3">STATIC BEHAVIOR</text>
+    <text x="622" y="346" text-anchor="middle" font-size="14" fill="#475569">sensitive objects · operations</text>
+    <text x="622" y="370" text-anchor="middle" font-size="14" fill="#475569">instructions · paths · destinations</text>
+    <text x="622" y="394" text-anchor="middle" font-size="14" fill="#475569">unresolved evidence</text>
+    <rect x="815" y="178" width="190" height="120" rx="22" fill="#f8fafc" stroke="#334155" stroke-width="2"/>
+    <text x="910" y="222" text-anchor="middle" font-size="20" font-weight="800" fill="#0f172a">POLICY REVIEW</text>
+    <text x="910" y="251" text-anchor="middle" font-size="14" fill="#475569">function ↔ behavior</text>
+    <text x="910" y="276" text-anchor="middle" font-size="14" fill="#475569">severity · confidence · coverage</text>
+    <rect x="1060" y="100" width="105" height="75" rx="18" fill="#ecfdf5" stroke="#16a34a" stroke-width="2"/>
+    <text x="1112" y="145" text-anchor="middle" font-size="18" font-weight="800" fill="#166534">PASS</text>
+    <rect x="1060" y="201" width="105" height="75" rx="18" fill="#fffbeb" stroke="#d97706" stroke-width="2"/>
+    <text x="1112" y="246" text-anchor="middle" font-size="18" font-weight="800" fill="#92400e">REVIEW</text>
+    <rect x="1060" y="302" width="105" height="75" rx="18" fill="#fef2f2" stroke="#dc2626" stroke-width="2"/>
+    <text x="1112" y="347" text-anchor="middle" font-size="18" font-weight="800" fill="#991b1b">BLOCK</text>
+  </g>
+  <g fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrow)">
+    <path d="M215 238H270"/><path d="M445 218C475 218 480 162 505 162"/><path d="M445 258C475 258 480 347 505 347"/>
+    <path d="M735 162C780 162 775 218 810 218"/><path d="M735 347C780 347 775 258 810 258"/>
+    <path d="M1005 238H1048"/>
+  </g>
+  <g font-family="Inter,Segoe UI,Arial,sans-serif" font-size="14" fill="#64748b">
+    <text x="600" y="472" text-anchor="middle">No installation · no import · no dependency execution · no declared entry-point invocation</text>
+  </g>
+</svg>

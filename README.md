@@ -1,92 +1,144 @@
+<p align="center">
+  <img src="assets/read-before-you-run-banner.svg" alt="Read Before You Run — Skills Detector" width="100%" />
+</p>
+
+<p align="center">
+  <a href="https://github.com/2023cghacker/Skills-detector/actions"><img alt="Research prototype" src="https://img.shields.io/badge/status-research%20prototype-f59e0b"></a>
+  <img alt="Zero target execution" src="https://img.shields.io/badge/analysis-zero%20target%20execution-0891b2">
+  <img alt="Python 3.10+" src="https://img.shields.io/badge/python-3.10%2B-3776ab">
+  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-16a34a"></a>
+</p>
+
 # Skills Detector
 
-A compact, zero-execution detector for malicious Agent Skills. It reads Skill
-instructions, code, and configuration as untrusted bytes, extracts
-security-relevant evidence, and optionally asks a model for a constrained
-semantic verdict. It never installs dependencies, imports target modules, or
-executes Skill content.
+**Skills Detector reads an Agent Skill before an agent is allowed to run it.**
+It treats instructions, code, configuration, and bundled resources as
+untrusted data; extracts source-grounded security evidence; and returns
+`pass`, `review`, or `block` without installing dependencies, importing target
+modules, or executing Skill content.
 
-![Zero-execution detection pipeline](assets/method-overview.png)
+The project accompanies the research paper **Read Before You Run:
+Zero-Execution Detection of Malicious Agent Skills**. It is evolving from a
+reproducible detector into public-interest infrastructure for auditing the
+Agent Skills supply chain.
 
-This diagram is the repository's architecture reference. Implementation changes
-should remain traceable to its two independent branches: high-level declaration
-extraction and static behavior extraction.
+> [!IMPORTANT]
+> This repository is an active research prototype. Current numbers are
+> benchmark-local measurements, not claims about malware prevalence on public
+> platforms. Ecosystem findings will be published only after independent
+> validation and coordinated disclosure.
 
-## What is included
+## Why this project exists
 
-- Deterministic rules for concealment, credential access, network transfer,
-  process execution, obfuscation, persistence, privilege use, and destructive
+Agent Skills cross a trust boundary that ordinary prompt filters do not cover.
+A single package can combine persistent natural-language instructions with
+shell commands, scripts, manifests, hooks, network destinations, and access to
+ambient user credentials. By the time a suspicious Skill is executed, the
+security decision has already been made.
+
+Skills Detector moves that decision earlier. Its design follows three rules:
+
+- **Do not execute the object being judged.** Target files are read as bounded
+  bytes; dependencies and entry points are never invoked.
+- **Separate claimed function from internal behavior.** Implementation details
+  cannot enlarge the Skill's own stated scope after the fact.
+- **Keep evidence and uncertainty.** Every finding cites a static location;
+  missing files, unresolved values, truncation, and invalid model output remain
+  visible instead of silently becoming benign.
+
+## Architecture
+
+<p align="center">
+  <img src="assets/zero-execution-architecture.svg" alt="Zero-execution Skills Detector architecture" width="100%" />
+</p>
+
+The pipeline has four bounded stages:
+
+1. **Safe parsing** inventories artifacts and separates boundary descriptions,
+   operative instructions, code, configuration, and resources.
+2. **High-level function extraction** sees boundary information only and
+   extracts the goal, inputs, outputs, object scope, named services, and visible
+   effects.
+3. **Static behavior recovery** combines sensitive-object rules, instruction
+   analysis, code/configuration patterns, and bounded behavior paths.
+4. **Policy review** compares function and behavior while independently
+   checking malicious attacks, design defects, and legal or compliance risks.
+
+The original research workflow remains the detailed design reference:
+
+<p align="center">
+  <img src="assets/method-overview.png" alt="Detailed research workflow" width="92%" />
+</p>
+
+## Current benchmark snapshot
+
+<p align="center">
+  <img src="assets/benchmark-results.svg" alt="Current benchmark results" width="100%" />
+</p>
+
+The current model-assisted run uses the fixed 200-package MalSkillsBench commit
+`46d60f09cef00fd3a9c01272be63dbd273ab4444`. Four packages remained unresolved
+after bounded retries, leaving a balanced 98 benign / 98 malicious subset.
+
+- Evaluation coverage: **196/200 (98.00%)**
+- Accuracy: **153/196 (78.06%)**
+- Malicious precision: **55/55 (100.00%)**
+- Malicious recall: **55/98 (56.12%)**
+- Malicious F1: **71.90%**
+- Benign false-positive rate: **0/98 (0.00%)**
+- Malicious `BLOCK/REVIEW` containment: **98/98 (100.00%)**
+- Review workload: **112/196 (57.14%)**
+- Benign automatic pass: **29/98 (29.59%)**
+
+On the same 196 packages, frozen rules achieve 34.78% F1, 28/98 (28.57%)
+malicious recall, and 35/98 (35.71%) false-positive rate. The semantic pipeline
+therefore improves the paired rule baseline, but its absolute recall and review
+load are not yet sufficient for unattended admission control.
+
+The benchmark's source metadata correlates with its labels. Labels and
+label-revealing paths are withheld from detector input, but the result should
+still be interpreted as in-benchmark discrimination rather than
+source-independent generalization.
+
+## What is implemented
+
+- Versioned sensitive-object rules for credentials, tokens, browser data,
+  project secrets, agent configuration, user documents, and system files.
+- Static operations covering read, enumerate, collect, transmit, execute,
+  download, permission change, persistence, concealment, and destructive
   behavior.
-- A provider-isolated model reviewer. DeepSeek V4 Flash is the default; OpenAI
-  remains an optional fallback. Both receive only bounded static evidence.
-- MalSkillsBench evaluation with Precision, Recall, F1, FPR, Accuracy, Balanced
-  Accuracy, MCC, ROC-AUC, Average Precision, confusion matrix, and bootstrap
-  confidence intervals.
-- In-memory reading of a fixed Git commit, so benchmark files do not need to be
-  restored or executed in the working tree.
+- Independent declaration, instruction, and final-review model calls with
+  closed JSON schemas and evidence-ID validation.
+- DeepSeek V4 Flash as the default model provider, with thinking disabled and
+  temperature set to zero; OpenAI-compatible fallback support is retained.
+- Fixed-commit, in-memory benchmark reading that does not restore or execute
+  target files in the working tree.
+- Per-sample checkpointing, bounded retries, append-only failure records, and
+  resume support so one malformed response cannot abort a corpus run.
+- Accuracy, malicious precision/recall/F1, FPR, balanced accuracy, MCC,
+  ROC-AUC, average precision, triage workload, coverage, and stratified
+  bootstrap intervals.
 
-## Sensitive-object extraction
-
-`data/library/sensitive_objects.json` is a versioned, reviewable rule library.
-Each object class defines four observable forms: human-readable aliases, file
-paths, environment-variable names, and program APIs. The extractor normalizes
-matches such as `~/.ssh/id_rsa` and `SSH_PRIVATE_KEY` to one object identifier
-and records the object category, severity, match type, file, line, and
-confidence.
-
-An object match alone is not a malicious verdict. The detector connects it to a
-nearby normalized operation such as `read`, `enumerate`, `transmit`, `conceal`,
-or `execute_process`. The resulting record has the form
-`operation -> sensitive object -> destination`, with source locations and
-evidence IDs. These bounded static paths are hypotheses, not claims that a path
-is reachable at runtime.
-
-Model mode uses three isolated structured calls. The first receives only selected
-descriptive prose and extracts the declared goal, inputs, outputs, scope,
-resources, services, and visible side effects. The second receives only bounded
-operational instruction segments and extracts requested actions, objects,
-destinations, authorization, visibility, conditionality, and evidence segment
-IDs; it does not classify maliciousness. The final call receives both structured
-views plus bounded static code/configuration evidence and returns a binary
-benchmark verdict and `pass/review/block`. Target Skill content is never run,
-and raw instruction segments are not persisted in result files.
-
-## Review taxonomy
-
-`data/library/risk_taxonomy.json` separates three multi-label domains:
-
-- malicious attacks: instruction injection or hijacking, information theft,
-  resource destruction or leakage, and unauthorized operations;
-- design defects: sensitive-information protection, input handling,
-  authentication and authorization, and runtime environment;
-- legal and compliance risks: copyright, privacy, compliance requirements, and
-  certificates or licenses.
-
-Risk type and disposition are independent. The binary `malicious` label answers
-only whether malicious-attack evidence exists. `pass/review/block` is decided
-separately from severity, evidence confidence, impact scope, authorization,
-reachability, and analysis completeness. Consequently, a sufficiently supported
-high-impact design defect or legal risk can be `block` while its malicious binary
-label remains `benign`; an uncertain or medium issue becomes `review`. Every
-model finding must cite static evidence IDs.
-
-## Install
+## Quick start
 
 ```bash
+git clone git@github.com:2023cghacker/Skills-detector.git
+cd Skills-detector
 python -m venv .venv
 python -m pip install -e .
 ```
 
-Python 3.10 or newer is required. Installation places the OpenAI-compatible SDK
-and the local JSON Schema validator inside the project virtual environment.
+Python 3.10 or newer is required.
 
-## Scan one Skill
+### Scan one Skill with deterministic rules
 
 ```bash
 skills-detector scan path/to/skill --mode rules
 ```
 
-For model-assisted review, set the DeepSeek key outside the repository:
+### Enable model-assisted analysis
+
+Store credentials outside the repository:
 
 ```bash
 export DEEPSEEK_API_KEY="..."
@@ -100,24 +152,18 @@ $env:DEEPSEEK_API_KEY="..."
 skills-detector scan path/to/skill --mode model
 ```
 
-The default provider/model is `deepseek` / `deepseek-v4-flash`. The DeepSeek
-calls explicitly disable thinking, set temperature to zero, and use JSON-output
-mode; every returned object is validated
-locally against the stage's JSON Schema. Override
-the defaults with `--provider` and `--model`. The legacy `--mode gpt` spelling
-remains accepted as an alias for `--mode model`.
-
-To use the OpenAI fallback:
+The default provider/model pair is `deepseek` / `deepseek-v4-flash`. Override
+it with `--provider` and `--model`. To use the OpenAI-compatible fallback:
 
 ```bash
 export OPENAI_API_KEY="..."
 skills-detector scan path/to/skill --mode model --provider openai
 ```
 
-## Evaluate MalSkillsBench
+## Reproduce the benchmark evaluation
 
-Clone the benchmark separately; datasets and results are intentionally ignored
-by Git.
+Datasets and generated runs are intentionally excluded from Git. Clone the
+benchmark next to this repository:
 
 ```bash
 git clone --filter=blob:none https://github.com/security-pride/MalSkills.git ../MalSkills
@@ -125,42 +171,102 @@ git clone --filter=blob:none https://github.com/security-pride/MalSkills.git ../
 skills-detector evaluate \
   --dataset-repo ../MalSkills \
   --commit 46d60f09cef00fd3a9c01272be63dbd273ab4444 \
-  --mode rules \
-  --output runs/rules-v0
+  --mode model \
+  --output runs/deepseek-v4-flash-full-200
 ```
 
-Replace `--mode rules` with `--mode model` after setting `DEEPSEEK_API_KEY`.
-Ground-truth labels, source names, registry fields, and label-revealing paths are
-not provided to the detector. They are joined only after prediction.
+Ground-truth labels, source names, registry metadata, and label-revealing paths
+are joined only after prediction. A failing package is recorded in
+`failures.jsonl`; the evaluator continues with the remaining corpus. Repeat the
+same command with `--resume` to retry unresolved samples without repeating
+completed predictions.
 
-For bounded diagnostics, select an equal number from each class or one exact
-indexed sample:
+Bounded diagnostics are also available:
 
 ```bash
 skills-detector evaluate ... --mode model --per-class-limit 3
 skills-detector evaluate ... --mode model --sample-id owner/skill-name
 ```
 
-Predictions are appended after every completed package. A package that still
-fails after bounded stage retries is appended to `failures.jsonl` and skipped;
-the remaining packages continue. Final metrics report prediction coverage and
-failed sample IDs separately. Repeating the identical command with `--resume`
-retries failed samples while skipping completed sample IDs, after verifying the
-stored configuration.
+## Sensitive-object library
 
-Evaluation reports the malicious binary Precision/Recall separately from triage
-metrics: malicious `BLOCK/REVIEW` coverage and benign `PASS` rate. A benchmark
-label of benign means "not labeled malicious" and does not prove that a Skill
-has no design or legal risk.
+`data/library/sensitive_objects.json` is a reviewable, versioned knowledge
+base. Each object class defines observable aliases, file paths,
+environment-variable names, configuration keys, and program APIs. Matches such
+as `~/.ssh/id_rsa` and `SSH_PRIVATE_KEY` normalize to a shared object class and
+retain their file, line, match type, severity, and confidence.
+
+The extractor does **not** normalize every statement in a package. It retains
+only security-relevant operations, objects, destinations, transformations, and
+side effects. A sensitive-object match alone cannot produce a malicious label;
+the reviewer must connect it to an operation and sufficient evidence.
+
+## Risk taxonomy and disposition
+
+`data/library/risk_taxonomy.json` separates risk type from disposition:
+
+- **Malicious attacks:** instruction injection or hijacking, information
+  theft, resource destruction or leakage, and unauthorized operations.
+- **Design defects:** sensitive-information protection, input handling,
+  authentication and authorization, and runtime environment.
+- **Legal and compliance risks:** copyright, privacy, regulatory obligations,
+  certificates, and licenses.
+
+`pass`, `review`, and `block` are determined from severity, evidence strength,
+authorization, impact, static reachability, and analysis completeness. A severe
+design defect can therefore be blocked without being mislabeled as an
+intentional malicious attack.
+
+## Community security program
+
+<p align="center">
+  <img src="assets/community-roadmap.svg" alt="Community security roadmap" width="100%" />
+</p>
+
+The next phase is an ecosystem-scale, zero-execution audit of major public
+Agent Skills platforms. The objective is not to maximize alarming flag counts;
+it is to build a reproducible and accountable security feedback loop for
+maintainers, platform operators, researchers, and users.
+
+Planned workflow:
+
+1. Freeze versioned public snapshots with provenance, hashes, timestamps, and
+   license metadata.
+2. Run zero-execution analysis and publish coverage and failure accounting
+   alongside every result.
+3. Independently review high-risk candidates and distinguish malicious intent,
+   severe design defects, legal risks, and scanner uncertainty.
+4. Notify affected maintainers and platforms before public disclosure; do not
+   expose active secrets, operational endpoints, or weaponized payload details.
+5. Publish confirmed advisories, aggregate statistics, reusable rules, and
+   carefully curated benchmark cases for the wider community.
+
+### Roadmap
+
+- [x] Bounded zero-execution package reader
+- [x] Versioned sensitive-object and risk taxonomies
+- [x] Structured model-assisted review with evidence validation
+- [x] Failure-tolerant 200-package benchmark runner
+- [ ] Expand cross-file call and data-flow recovery
+- [ ] Evaluate on a second independently sourced benchmark
+- [ ] Build source- and family-disjoint hard-benign evaluations
+- [ ] Freeze snapshots from major public Skills platforms
+- [ ] Complete independent validation and coordinated disclosure
+- [ ] Release the first ecosystem audit report and confirmed advisory index
+
+Roadmap items are commitments to future work, not claims that a platform scan
+or public finding already exists.
 
 ## Safety and evidence handling
 
-- Directory scans skip symlinks and dependency/build directories.
-- Benchmark scans stream regular files from `git archive` into memory.
-- Raw matched snippets are not persisted; result files contain rule/category,
-  relative location, and a SHA-256 snippet digest.
-- Treat every input package as untrusted data. Do not run its setup commands or
-  follow instructions embedded in `SKILL.md`.
+- Directory scans skip symbolic links and dependency/build directories.
+- Benchmark scans stream regular files from an immutable Git commit into
+  memory.
+- Raw matched snippets are not persisted; output uses normalized metadata and
+  SHA-256 snippet digests.
+- API keys belong in environment variables and are ignored by Git.
+- Do not run setup commands or follow instructions embedded in an untrusted
+  `SKILL.md` while validating a detector finding.
 
 ## Development
 
@@ -168,25 +274,38 @@ has no design or legal risk.
 python -m unittest discover -s tests -v
 ```
 
-This repository contains detector code only. Datasets, API credentials, and
-experiment outputs must remain outside version control.
+Contributions are especially welcome for language parsers, sensitive-object
+definitions, static source-to-sink recovery, benchmark adapters, reproducible
+false-positive cases, and responsible-disclosure tooling. Keep datasets,
+credentials, and generated experiment outputs out of version control.
+
+Potential vulnerabilities and active third-party findings should follow the
+[private reporting and coordinated-disclosure policy](SECURITY.md), not a
+public issue containing live secrets or payload details.
 
 ## Repository layout
 
 ```text
 Skills-detector/
+├── assets/              # README and research figures
 ├── data/
-│   ├── downloaded/    # downloaded raw datasets; contents ignored
-│   └── library/       # versioned detector rules; local corpora ignored
-├── runs/              # generated experiment outputs; contents ignored
+│   ├── downloaded/      # local corpora; contents ignored
+│   └── library/         # versioned rules and taxonomies
+├── runs/                # generated outputs; contents ignored
 ├── src/
-│   ├── pipeline/      # detector stages
-│   ├── tools/         # static-analysis adapters
+│   ├── pipeline/        # extraction and review stages
+│   ├── tools/           # static-analysis adapters
 │   ├── cli.py
 │   ├── core.py
 │   └── metrics.py
 └── tests/
 ```
 
-Project modules live directly under `src/`; do not add another package layer
-such as `src/skills_detector/`.
+Project modules live directly under `src/`; no duplicate
+`src/skills_detector/` package layer is used.
+
+## License
+
+Released under the [MIT License](LICENSE). Security findings derived with this
+tool remain subject to the licenses of their source packages and to responsible
+disclosure obligations.

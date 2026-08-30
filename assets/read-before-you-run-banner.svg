@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300" viewBox="0 0 1200 300" role="img" aria-labelledby="title desc">
+  <title id="title">Read Before You Run — Skills Detector</title>
+  <desc id="desc">Zero-execution security analysis for Agent Skills</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#091221"/>
+      <stop offset="0.55" stop-color="#122b4d"/>
+      <stop offset="1" stop-color="#164e63"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="80%" cy="30%" r="70%">
+      <stop offset="0" stop-color="#38bdf8" stop-opacity=".3"/>
+      <stop offset="1" stop-color="#38bdf8" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="shadow"><feDropShadow dx="0" dy="8" stdDeviation="12" flood-opacity=".3"/></filter>
+  </defs>
+  <rect width="1200" height="300" rx="28" fill="url(#bg)"/>
+  <rect width="1200" height="300" rx="28" fill="url(#glow)"/>
+  <g opacity=".18" stroke="#7dd3fc" fill="none">
+    <path d="M0 225 C180 130 260 300 450 200 S760 90 940 190 1120 220 1200 140" stroke-width="2"/>
+    <path d="M0 250 C190 155 285 315 470 225 S780 115 970 210 1110 235 1200 165"/>
+  </g>
+  <g transform="translate(70 66)" filter="url(#shadow)">
+    <path d="M82 0 154 28v50c0 48-29 84-72 104C39 162 10 126 10 78V28Z" fill="#0f172a" stroke="#67e8f9" stroke-width="4"/>
+    <path d="m47 91 22 22 48-54" fill="none" stroke="#5eead4" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M30 35 134 139M134 35 30 139" stroke="#38bdf8" stroke-opacity=".15" stroke-width="2"/>
+  </g>
+  <g font-family="Inter,Segoe UI,Arial,sans-serif" fill="#f8fafc">
+    <text x="285" y="103" font-size="28" font-weight="600" letter-spacing="4" fill="#67e8f9">READ BEFORE YOU RUN</text>
+    <text x="282" y="171" font-size="58" font-weight="800">Skills Detector</text>
+    <text x="285" y="218" font-size="23" fill="#cbd5e1">Zero-execution security analysis for the Agent Skills supply chain</text>
+  </g>
+  <g transform="translate(927 62)" font-family="Inter,Segoe UI,Arial,sans-serif">
+    <rect width="206" height="42" rx="21" fill="#0f172a" stroke="#22d3ee"/>
+    <circle cx="24" cy="21" r="7" fill="#34d399"/>
+    <text x="43" y="27" font-size="16" font-weight="700" fill="#e2e8f0">NO TARGET EXECUTION</text>
+    <rect y="58" width="206" height="42" rx="21" fill="#0f172a" stroke="#22d3ee"/>
+    <circle cx="24" cy="79" r="7" fill="#60a5fa"/>
+    <text x="43" y="85" font-size="16" font-weight="700" fill="#e2e8f0">EVIDENCE GROUNDED</text>
+    <rect y="116" width="206" height="42" rx="21" fill="#0f172a" stroke="#22d3ee"/>
+    <circle cx="24" cy="137" r="7" fill="#fbbf24"/>
+    <text x="43" y="143" font-size="16" font-weight="700" fill="#e2e8f0">RESEARCH PREVIEW</text>
+  </g>
+</svg>
