@@ -4,7 +4,6 @@
     {
       "id": "malicious_attack",
       "name": "恶意攻击",
-      "decision_effect": "may_block",
       "subcategories": [
         {"id": "instruction_injection_hijacking", "name": "指令注入或劫持", "definition": "改变指令优先级、覆盖可信指令或劫持智能体既定任务。"},
         {"id": "information_theft", "name": "信息窃取", "definition": "获取、汇集、隐藏或向未获授权的去向传输敏感信息。"},
@@ -15,7 +14,6 @@
     {
       "id": "design_defect",
       "name": "设计缺陷",
-      "decision_effect": "review",
       "subcategories": [
         {"id": "sensitive_information_protection", "name": "敏感信息保护", "definition": "秘密或个人数据的存储、日志、传输、最小化或清理机制不足。"},
         {"id": "input_handling", "name": "输入处理", "definition": "不可信输入缺少验证、转义、边界限制，或进入命令、解释器和动态执行。"},
@@ -26,7 +24,6 @@
     {
       "id": "legal_risk",
       "name": "法律与合规风险",
-      "decision_effect": "review",
       "subcategories": [
         {"id": "copyright", "name": "版权", "definition": "复制、下载、生成或分发内容时可能缺少必要版权或许可依据。"},
         {"id": "privacy", "name": "隐私", "definition": "收集、处理、共享或保留个人信息时可能缺少告知、同意或最小化。"},
@@ -37,7 +34,12 @@
   ],
   "rules": {
     "multi_label": true,
-    "malicious_binary_mapping": "只有具有充分证据的 malicious_attack 才映射为 malicious；design_defect 和 legal_risk 单独出现时映射为 review。",
+    "independent_outputs": "风险类型与处置结果独立：domain 描述风险性质，decision 描述处置动作。",
+    "malicious_binary_mapping": "恶意二分类仅回答是否存在恶意攻击；它不决定处置结果。",
+    "decision_dimensions": ["severity", "evidence_confidence", "impact_scope", "authorization", "reachability", "analysis_completeness"],
+    "block": "任一风险域存在证据充分的高危或严重风险，且继续使用可能直接造成不可接受的安全、合规或法律后果。",
+    "review": "风险为中等、证据或可达性不确定、授权边界不清，或分析不完整且可能改变结论。",
+    "pass": "未发现有充分证据支持的实质风险，且静态分析覆盖足以支持该结论。",
     "absence_of_evidence": "未发现静态证据不等于证明安全。",
     "required_support": "每个结论必须引用静态证据 ID；仅出现相关名词不足以确认风险。"
   }

