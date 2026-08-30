@@ -20,6 +20,7 @@ data/downloaded/*
 !data/downloaded/.gitkeep
 data/library/*
 !data/library/.gitkeep
+!data/library/sensitive_objects.json
 datasets/
 artifacts/
 runs/*

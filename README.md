@@ -6,6 +6,12 @@ security-relevant evidence, and optionally asks a GPT model for a constrained
 semantic verdict. It never installs dependencies, imports target modules, or
 executes Skill content.
 
+![Zero-execution detection pipeline](assets/method-overview.png)
+
+This diagram is the repository's architecture reference. Implementation changes
+should remain traceable to its two independent branches: high-level declaration
+extraction and static behavior extraction.
+
 ## What is included
 
 - Deterministic rules for concealment, credential access, network transfer,
@@ -18,6 +24,28 @@ executes Skill content.
   confidence intervals.
 - In-memory reading of a fixed Git commit, so benchmark files do not need to be
   restored or executed in the working tree.
+
+## Sensitive-object extraction
+
+`data/library/sensitive_objects.json` is a versioned, reviewable rule library.
+Each object class defines four observable forms: human-readable aliases, file
+paths, environment-variable names, and program APIs. The extractor normalizes
+matches such as `~/.ssh/id_rsa` and `SSH_PRIVATE_KEY` to one object identifier
+and records the object category, severity, match type, file, line, and
+confidence.
+
+An object match alone is not a malicious verdict. The detector connects it to a
+nearby normalized operation such as `read`, `enumerate`, `transmit`, `conceal`,
+or `execute_process`. The resulting record has the form
+`operation -> sensitive object -> destination`, with source locations and
+evidence IDs. These bounded static paths are hypotheses, not claims that a path
+is reachable at runtime.
+
+In GPT mode, the model first receives only selected descriptive prose and emits
+a strict declaration schema (goal, inputs, outputs, scope, resources, services,
+and visible side effects). A separate review call compares that declaration
+with bounded static evidence and returns a binary benchmark verdict plus an
+operational `allow/review/block` decision. Target Skill content is never run.
 
 ## Install
 
@@ -87,7 +115,7 @@ experiment outputs must remain outside version control.
 Skills-detector/
 ├── data/
 │   ├── downloaded/    # downloaded raw datasets; contents ignored
-│   └── library/       # normalized local corpus; contents ignored
+│   └── library/       # versioned detector rules; local corpora ignored
 ├── runs/              # generated experiment outputs; contents ignored
 ├── src/
 │   ├── pipeline/      # detector stages

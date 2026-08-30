@@ -1,0 +1,85 @@
+{
+  "version": "1.0",
+  "objects": [
+    {
+      "id": "ssh_private_key",
+      "category": "authentication_secret",
+      "severity": "critical",
+      "description": "SSH private keys used for host authentication",
+      "aliases": ["ssh private key", "ssh key", "id_rsa", "id_ed25519"],
+      "path_patterns": ["(?:^|[/\\\\])\\.ssh[/\\\\](?:id_rsa|id_ed25519|id_ecdsa)(?:$|[^.])"],
+      "env_patterns": ["SSH_PRIVATE_KEY"],
+      "api_patterns": []
+    },
+    {
+      "id": "cloud_credentials",
+      "category": "authentication_secret",
+      "severity": "critical",
+      "description": "Cloud provider access keys and credential files",
+      "aliases": ["cloud credentials", "aws credentials", "access key", "secret access key"],
+      "path_patterns": ["(?:^|[/\\\\])\\.aws[/\\\\](?:credentials|config)(?:$|[^a-z])", "(?:^|[/\\\\])\\.config[/\\\\]gcloud[/\\\\]credentials(?:$|[^a-z])"],
+      "env_patterns": ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AZURE_CLIENT_SECRET", "GOOGLE_APPLICATION_CREDENTIALS"],
+      "api_patterns": []
+    },
+    {
+      "id": "api_token",
+      "category": "authentication_secret",
+      "severity": "high",
+      "description": "API keys, bearer tokens, and service access tokens",
+      "aliases": ["api key", "api token", "access token", "bearer token", "client secret"],
+      "path_patterns": [],
+      "env_patterns": ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GITHUB_TOKEN", "GITLAB_TOKEN", "SLACK_TOKEN", "API_KEY", "ACCESS_TOKEN", "CLIENT_SECRET"],
+      "api_patterns": ["(?:os\\.environ|process\\.env|getenv)\\s*(?:\\[|\\(|\\.)[^\\n]{0,80}(?:TOKEN|SECRET|API_KEY)"]
+    },
+    {
+      "id": "browser_auth_data",
+      "category": "session_secret",
+      "severity": "critical",
+      "description": "Browser password, cookie, and authenticated session stores",
+      "aliases": ["browser cookies", "browser passwords", "login data", "session cookies"],
+      "path_patterns": ["(?:Chrome|Chromium|Edge|Brave)[/\\\\][^\\n]{0,120}(?:Login Data|Cookies)(?:$|[^a-z])", "Firefox[/\\\\]Profiles[/\\\\][^\\n]{0,120}(?:cookies\\.sqlite|logins\\.json)(?:$|[^a-z])"],
+      "env_patterns": [],
+      "api_patterns": ["(?:browser_cookie3|keyring)\\."]
+    },
+    {
+      "id": "password_store",
+      "category": "authentication_secret",
+      "severity": "critical",
+      "description": "Operating-system or application password stores",
+      "aliases": ["password store", "credential vault", "keychain", "windows credential manager"],
+      "path_patterns": ["(?:^|[/\\\\])\\.password-store[/\\\\]", "(?:^|[/\\\\])Library[/\\\\]Keychains[/\\\\]"],
+      "env_patterns": [],
+      "api_patterns": ["(?:keyring\\.get_password|CredReadW|SecKeychainFindGenericPassword)"]
+    },
+    {
+      "id": "cryptocurrency_wallet",
+      "category": "financial_secret",
+      "severity": "critical",
+      "description": "Cryptocurrency wallet seed phrases and private keys",
+      "aliases": ["seed phrase", "mnemonic phrase", "wallet private key", "crypto wallet"],
+      "path_patterns": ["(?:^|[/\\\\])\\.(?:bitcoin|electrum|ethereum)[/\\\\]", "wallet\\.dat(?:$|[^a-z])"],
+      "env_patterns": ["WALLET_PRIVATE_KEY", "MNEMONIC", "SEED_PHRASE"],
+      "api_patterns": []
+    },
+    {
+      "id": "environment_secrets",
+      "category": "secret_container",
+      "severity": "high",
+      "description": "Environment files and process environments that may contain multiple secrets",
+      "aliases": ["environment variables", "environment secrets", "dotenv file"],
+      "path_patterns": ["(?:^|[/\\\\])\\.env(?:\\.[A-Za-z0-9_-]+)?(?:$|[^A-Za-z0-9_-])", "/proc/(?:self|\\d+)/environ(?:$|[^a-z])"],
+      "env_patterns": [],
+      "api_patterns": ["(?:os\\.environ|process\\.env|os\\.getenv|process\\.env)"]
+    },
+    {
+      "id": "private_communication",
+      "category": "personal_data",
+      "severity": "high",
+      "description": "Private email, message, and conversation content",
+      "aliases": ["private messages", "direct messages", "email inbox", "chat history", "conversation history"],
+      "path_patterns": [],
+      "env_patterns": [],
+      "api_patterns": ["(?:gmail|outlook|slack|discord)[._-]?(?:messages|history|conversations)"]
+    }
+  ]
+}

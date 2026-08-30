@@ -102,7 +102,17 @@ def _evaluate(args: argparse.Namespace) -> int:
     config = {"mode": args.mode, "model": args.model if args.mode == "gpt" else None, "threshold": args.threshold, "commit": args.commit, "samples": len(rows), "zero_execution": True}
     (output / "config.json").write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
     (output / "metrics.json").write_text(json.dumps(metrics, indent=2) + "\n", encoding="utf-8")
+    matrix = metrics["confusion_matrix"]
+    human = "\n".join((
+        f"Accuracy: {matrix['tp'] + matrix['tn']}/{metrics['n']}（{metrics['accuracy']:.2%}）",
+        f"Malicious Recall: {matrix['tp']}/{matrix['tp'] + matrix['fn']}（{metrics['recall']:.2%}）",
+        f"Precision: {matrix['tp']}/{matrix['tp'] + matrix['fp']}（{metrics['precision']:.2%}）",
+        f"F1: {metrics['f1']:.2%}",
+        "",
+    ))
+    (output / "metrics.md").write_text(human, encoding="utf-8")
     print(json.dumps(metrics, indent=2))
+    print(human)
     return 0
 
 
