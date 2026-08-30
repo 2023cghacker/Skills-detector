@@ -141,10 +141,12 @@ skills-detector evaluate ... --mode model --per-class-limit 3
 skills-detector evaluate ... --mode model --sample-id owner/skill-name
 ```
 
-Predictions are appended after every completed package. If a rate limit or
-network failure interrupts a run, repeat the identical command with `--resume`;
-the evaluator verifies the stored configuration and skips completed sample IDs.
-Failures are recorded in `failure.json` without deleting partial predictions.
+Predictions are appended after every completed package. A package that still
+fails after bounded stage retries is appended to `failures.jsonl` and skipped;
+the remaining packages continue. Final metrics report prediction coverage and
+failed sample IDs separately. Repeating the identical command with `--resume`
+retries failed samples while skipping completed sample IDs, after verifying the
+stored configuration.
 
 Evaluation reports the malicious binary Precision/Recall separately from triage
 metrics: malicious `BLOCK/REVIEW` coverage and benign `PASS` rate. A benchmark

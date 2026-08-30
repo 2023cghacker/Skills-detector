@@ -105,16 +105,21 @@ def _evaluate(args: argparse.Namespace) -> int:
         raise ValueError(f"output directory already exists: {output}; use --resume for an incomplete run")
     output.mkdir(parents=True, exist_ok=True)
     predictions_path = output / "predictions.jsonl"
+    failures_path = output / "failures.jsonl"
     records = []
     if args.resume and predictions_path.exists():
         records = [json.loads(line) for line in predictions_path.read_text(encoding="utf-8").splitlines() if line.strip()]
     completed_ids = {record["sample_id"] for record in records}
+    prior_failures = []
+    if failures_path.exists():
+        prior_failures = [json.loads(line) for line in failures_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    failure_attempts = Counter(item["sample_id"] for item in prior_failures)
     usage_total = Counter()
     for record in records:
         usage_total.update(record.get("usage", {}))
     started = time.perf_counter()
 
-    config = {"mode": args.mode, "provider": args.provider if args.mode != "rules" else None, "model": model if args.mode != "rules" else None, "model_calls_per_package_max": 3 if args.mode != "rules" else 0, "threshold": args.threshold, "commit": args.commit, "samples": len(rows), "zero_execution": True}
+    config = {"mode": args.mode, "provider": args.provider if args.mode != "rules" else None, "model": model if args.mode != "rules" else None, "model_calls_per_package_nominal_max": 5 if args.mode != "rules" else 0, "stage_semantic_attempts_max": 3 if args.mode != "rules" else 0, "sample_error_policy": "record_and_continue", "threshold": args.threshold, "commit": args.commit, "samples": len(rows), "zero_execution": True}
     config_path = output / "config.json"
     if args.resume and config_path.exists() and json.loads(config_path.read_text(encoding="utf-8")) != config:
         raise ValueError("resume configuration does not match the existing run")
@@ -124,16 +129,20 @@ def _evaluate(args: argparse.Namespace) -> int:
         if row["Skill_name"] in completed_ids:
             print(f"[{index:03d}/{len(rows):03d}] {row['Skill_name']} -> resumed", flush=True)
             continue
-        prefix = row["Ground_truth_path"].replace("\\", "/").strip("/")
-        blobs = snapshot.package(prefix)
-        if not any(Path(name).name.lower() == "skill.md" for name in blobs):
-            raise RuntimeError(f"snapshot contains no SKILL.md for row {index}")
         try:
+            prefix = row["Ground_truth_path"].replace("\\", "/").strip("/")
+            blobs = snapshot.package(prefix)
+            if not any(Path(name).name.lower() == "skill.md" for name in blobs):
+                raise RuntimeError(f"snapshot contains no SKILL.md for row {index}")
             result, usage = _predict(blobs, args.mode, args.provider, model, args.threshold)
         except Exception as exc:
-            failure = {"sample_id": row["Skill_name"], "index": index, "completed": len(records), "error_type": type(exc).__name__, "error": str(exc)[:1000], "time_utc": datetime.now(timezone.utc).isoformat()}
-            (output / "failure.json").write_text(json.dumps(failure, indent=2) + "\n", encoding="utf-8")
-            raise
+            failure_attempts[row["Skill_name"]] += 1
+            failure = {"sample_id": row["Skill_name"], "index": index, "attempt": failure_attempts[row["Skill_name"]], "completed": len(records), "error_type": type(exc).__name__, "error": str(exc)[:1000], "time_utc": datetime.now(timezone.utc).isoformat()}
+            prior_failures.append(failure)
+            with failures_path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(failure, ensure_ascii=False) + "\n")
+            print(f"[{index:03d}/{len(rows):03d}] {row['Skill_name']} -> ERROR ({type(exc).__name__}); continuing", flush=True)
+            continue
         usage_total.update(usage)
         record = public_scan(result) | {
             "sample_id": row["Skill_name"], "ground_truth": row["Label"].lower(), "usage": usage,
@@ -143,15 +152,14 @@ def _evaluate(args: argparse.Namespace) -> int:
             handle.write(json.dumps(record, ensure_ascii=False) + "\n")
         print(f"[{index:03d}/{len(rows):03d}] {row['Skill_name']} -> {result['verdict']}", flush=True)
 
-    if (output / "failure.json").exists():
-        (output / "failure.json").unlink()
+    unresolved_failure_ids = sorted({item["sample_id"] for item in prior_failures} - {record["sample_id"] for record in records})
     labels = [record["ground_truth"] == "malicious" for record in records]
     predictions = [record["verdict"] == "malicious" for record in records]
     scores = [record["score"] if args.mode == "rules" else record["confidence"] * (1 if record["verdict"] == "malicious" else -1) for record in records]
     metrics = binary_metrics([int(x) for x in labels], [int(x) for x in predictions], scores)
     metrics["triage"] = triage_metrics([int(x) for x in labels], [record["decision"] for record in records])
     metrics["bootstrap_95_ci"] = bootstrap_ci([int(x) for x in labels], [int(x) for x in predictions], scores)
-    metrics["coverage"] = {"requested": len(rows), "evaluated": len(records), "truncated": sum(record["truncated"] for record in records)}
+    metrics["coverage"] = {"requested": len(rows), "evaluated": len(records), "failed": len(unresolved_failure_ids), "failed_sample_ids": unresolved_failure_ids, "failure_attempts": len(prior_failures), "truncated": sum(record["truncated"] for record in records)}
     metrics["usage"], metrics["wall_seconds"] = dict(usage_total), time.perf_counter() - started
     (output / "metrics.json").write_text(json.dumps(metrics, indent=2) + "\n", encoding="utf-8")
     matrix = metrics["confusion_matrix"]
@@ -159,6 +167,8 @@ def _evaluate(args: argparse.Namespace) -> int:
     predicted_malicious = matrix["tp"] + matrix["fp"]
     benign_total = len(records) - sum(labels)
     human = "\n".join((
+        _format_ratio("Evaluation Coverage", len(records), len(rows), len(records) / len(rows) if rows else 0.0),
+        f"Failed Samples: {len(unresolved_failure_ids)}/{len(rows)}（{len(unresolved_failure_ids) / len(rows):.2%}）" if rows else "Failed Samples: N/A（分母为 0）",
         _format_ratio("Accuracy", matrix["tp"] + matrix["tn"], metrics["n"], metrics["accuracy"]),
         _format_ratio("Malicious Recall", matrix["tp"], malicious_total, metrics["recall"]),
         _format_ratio("Precision", matrix["tp"], predicted_malicious, metrics["precision"]),
