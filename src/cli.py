@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .core import DEFAULT_THRESHOLD, GitSnapshot, public_scan, read_directory, review_with_model, scan_blobs
+from .core import DEFAULT_THRESHOLD, GitSnapshot, public_scan, read_directory, review_document_with_model, review_with_model, scan_blobs
 from .ecosystem import ArchiveCache, ecosystem_metrics, resolve_repository_matched_rows, skill_blobs_from_zip
 from .metrics import binary_metrics, bootstrap_ci, triage_metrics
 from .pipeline.model_client import DEFAULT_PROVIDER, default_model, require_api_key
@@ -29,7 +29,7 @@ def _parser() -> argparse.ArgumentParser:
 
     scan = commands.add_parser("scan", help="scan one local Skill directory")
     scan.add_argument("path", type=Path)
-    scan.add_argument("--mode", choices=("rules", "model", "gpt"), default="rules")
+    scan.add_argument("--mode", choices=("rules", "model", "gpt", "direct"), default="rules")
     scan.add_argument("--provider", choices=("deepseek", "openai"), default=DEFAULT_PROVIDER)
     scan.add_argument("--model", help="provider model ID; defaults to the provider's configured model")
     scan.add_argument("--threshold", type=int, default=DEFAULT_THRESHOLD)
@@ -39,7 +39,7 @@ def _parser() -> argparse.ArgumentParser:
     evaluate.add_argument("--dataset-repo", type=Path, required=True)
     evaluate.add_argument("--commit", required=True)
     evaluate.add_argument("--labels-csv", default="data/ground_truth/ground_truth_final.csv")
-    evaluate.add_argument("--mode", choices=("rules", "model", "gpt"), default="rules")
+    evaluate.add_argument("--mode", choices=("rules", "model", "gpt", "direct"), default="rules")
     evaluate.add_argument("--provider", choices=("deepseek", "openai"), default=DEFAULT_PROVIDER)
     evaluate.add_argument("--model", help="provider model ID; defaults to the provider's configured model")
     evaluate.add_argument("--threshold", type=int, default=DEFAULT_THRESHOLD)
@@ -78,10 +78,13 @@ def _predict(
     scan = scan_blobs(blobs, threshold=threshold)
     if mode == "rules":
         return scan, {}
-    review, usage = review_with_model(
-        scan, model=model, provider=provider,
-        include_declaration=ablation != "no-high-level",
-    )
+    if mode == "direct":
+        review, usage = review_document_with_model(blobs, model=model, provider=provider)
+    else:
+        review, usage = review_with_model(
+            scan, model=model, provider=provider,
+            include_declaration=ablation != "no-high-level",
+        )
     scan["verdict"], scan["decision"], scan["confidence"], scan["review"] = review["verdict"], review["decision"], review["confidence"], review
     return scan, usage
 
@@ -133,7 +136,7 @@ def _evaluate(args: argparse.Namespace) -> int:
         raise ValueError("require shard-count >= 1 and 0 <= shard-index < shard-count")
     rows = [row for index, row in enumerate(rows) if index % shard_count == shard_index]
     snapshot = GitSnapshot(args.dataset_repo, args.commit)
-    run_name = args.mode if args.mode == "rules" else f"{args.provider}-{model}"
+    run_name = args.mode if args.mode == "rules" else f"{args.mode}-{args.provider}-{model}"
     output = args.output or Path("runs") / f"{run_name}-{datetime.now(timezone.utc).strftime('%y%m%d-%H%M%S')}"
     if output.exists() and not args.resume:
         raise ValueError(f"output directory already exists: {output}; use --resume for an incomplete run")
@@ -153,7 +156,8 @@ def _evaluate(args: argparse.Namespace) -> int:
         usage_total.update(record.get("usage", {}))
     started = time.perf_counter()
 
-    config = {"mode": args.mode, "provider": args.provider if args.mode != "rules" else None, "model": model if args.mode != "rules" else None, "ablation": ablation, "behavior_engine": "python_ast_interprocedural_v1", "model_calls_per_package_nominal_max": 5 if args.mode != "rules" else 0, "stage_semantic_attempts_max": 3 if args.mode != "rules" else 0, "sample_error_policy": "record_and_continue", "threshold": args.threshold, "commit": args.commit, "samples": len(rows), "shard_count": shard_count, "shard_index": shard_index, "zero_execution": True}
+    nominal_calls = 0 if args.mode == "rules" else (1 if args.mode == "direct" else 5)
+    config = {"mode": args.mode, "provider": args.provider if args.mode != "rules" else None, "model": model if args.mode != "rules" else None, "ablation": ablation, "behavior_engine": "python_ast_interprocedural_v1", "model_calls_per_package_nominal_max": nominal_calls, "stage_semantic_attempts_max": 3 if args.mode not in {"rules", "direct"} else 0, "sample_error_policy": "record_and_continue", "threshold": args.threshold, "commit": args.commit, "samples": len(rows), "shard_count": shard_count, "shard_index": shard_index, "zero_execution": True}
     config_path = output / "config.json"
     if args.resume and config_path.exists() and json.loads(config_path.read_text(encoding="utf-8")) != config:
         raise ValueError("resume configuration does not match the existing run")

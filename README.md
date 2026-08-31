@@ -184,6 +184,11 @@ skills-detector evaluate \
   --output runs/deepseek-v4-flash-full-200
 ```
 
+For a document-only model baseline using one schema-constrained review call per
+package, replace `--mode model` with `--mode direct`. This baseline receives
+only the bounded primary `SKILL.md`; it does not receive static findings,
+behavior graphs, repository metadata, source names, or labels.
+
 Ground-truth labels, source names, registry metadata, and label-revealing paths
 are joined only after prediction. A failing package is recorded in
 `failures.jsonl`; the evaluator continues with the remaining corpus. Repeat the
