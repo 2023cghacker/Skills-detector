@@ -202,6 +202,30 @@ skills-detector evaluate ... --mode model --per-class-limit 3
 skills-detector evaluate ... --mode model --sample-id owner/skill-name
 ```
 
+## Prepare bounded evaluation corpora
+
+Dataset contents are excluded from Git. Install the optional reader and use the
+preparation command to materialize deterministic, integrity-checked samples:
+
+```bash
+python -m pip install -e ".[datasets]"
+python scripts/prepare_datasets.py benchmark \
+  --primary data/downloaded/malicious-skill-bench/hf/primary.parquet \
+  --split data/downloaded/malicious-skill-bench/metadata/splits/source_disjoint.csv \
+  --output data/downloaded/malicious-skill-bench/source-disjoint-1000
+
+python scripts/prepare_datasets.py community \
+  --index-dir data/downloaded/community-registry \
+  --output data/downloaded/community-live \
+  --per-category 100 --per-repo-cap 5 --budget-mib 512
+```
+
+The labeled command selects 500 malicious and 500 benign records from the
+official source-disjoint test split. The community command selects ten domains,
+downloads bounded primary Skill documents, records persistent failures, and
+stores content hashes. Registry security metadata are never treated as ground
+truth.
+
 ## Sensitive-object library
 
 `data/library/sensitive_objects.json` is a reviewable, versioned knowledge
@@ -271,6 +295,7 @@ Skills-detector/
 │   ├── downloaded/      # local corpora; contents ignored
 │   └── library/         # versioned rules and taxonomies
 ├── runs/                # generated outputs; contents ignored
+├── scripts/             # bounded dataset preparation utilities
 ├── src/
 │   ├── pipeline/        # extraction and review stages
 │   ├── tools/           # static-analysis adapters
