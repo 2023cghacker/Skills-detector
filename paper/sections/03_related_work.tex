@@ -1,0 +1,96 @@
+\section{Related Work}
+\label{sec:related}
+
+\subsection{Agent Skills as a Supply-Chain Boundary}
+
+Agent Skills occupy an unusual point between prompts and packages: they combine
+natural-language control with executable code, configuration, and resources.
+Liu et al. establish the ecosystem threat through a large-scale measurement of
+public registries, using static candidate generation followed by sandbox
+execution and expert confirmation~\cite{liu2026maliciousskills}. MalSkills
+instead targets zero-execution detection by extracting security-sensitive
+operations, linking values across artifacts, and applying neuro-symbolic rules
+to a dependency graph~\cite{wang2026malskills}. MaliciousSkillBench consolidates
+multiple Skill sources and demonstrates that performance degrades when the
+evaluation separates provenance~\cite{wang2026maliciousskillbench}. Together,
+these works define the central tension for admission control: behavioral
+confirmation requires execution, whereas artifact-only detection must reason
+under ambiguity and distribution shift.
+
+The broader software-supply-chain literature exposes a complementary entry
+point. Code-generating models frequently hallucinate plausible package names,
+creating opportunities for package-confusion attacks~\cite{spracklen2025package}.
+That work asks which dependency an LLM causes a developer to select; malicious
+Skill detection asks what an already selected package can instruct and enable
+an agent to do. Our work is closest to MalSkills, but evaluates whether adding
+separated high-level context to recovered behavior improves detection under a
+source-disjoint protocol. The result is negative, delimiting this design point
+rather than treating richer structure as an assumed benefit.
+
+\subsection{Adversarial Instructions, Tools, and Agent State}
+
+Prompt injection studies an attacker who places competing instructions in
+content consumed by an application. Liu et al. formalize this problem and
+benchmark attacks and defenses across models and tasks
+~\cite{liu2024promptinjection}. InjecAgent specializes the threat to
+tool-integrated agents, covering harmful actions and private-data exfiltration
+triggered by tool-returned content~\cite{zhan2024injecagent}. These attacks occur
+during a task trajectory, whereas a malicious Skill can make adversarial
+instructions persistent and package them with helper code or installation
+behavior.
+
+Other work compromises different components of the agent stack. AgentPoison
+plants retrieval triggers in long-term memory or knowledge bases
+~\cite{chen2024agentpoison}; BadAgent inserts backdoors through an untrusted
+model or fine-tuning data~\cite{wang2024badagent}. ToolSword maps failures across
+tool-use input, execution, and output stages~\cite{ye2024toolsword}, while
+ToolAlign trains for helpful, harmless, and autonomous tool use
+~\cite{chen2024toolalign}. These studies show that agent behavior can be
+subverted through model weights, memory, retrieved content, or tool feedback.
+Our adversary instead controls a distributable Skill artifact. The detector
+therefore cannot retrain the underlying model or observe a trigger at runtime;
+it must identify suspicious instructions and implementation evidence before
+the artifact becomes agent state.
+
+\subsection{Dynamic Analysis and Agent Security Evaluation}
+
+Dynamic approaches judge security from execution trajectories. AgentFuzz uses
+directed greybox fuzzing, generated seeds, and semantic and distance feedback
+to trigger taint-style vulnerabilities in running agent applications
+~\cite{liu2025agentfuzz}. ToolEmu searches for long-tail failures in
+language-model-emulated tool environments without invoking real services
+~\cite{ruan2024toolemu}. AgentDojo combines utility tasks, security goals, and
+indirect prompt-injection attacks in a reproducible agent environment
+~\cite{debenedetti2024agentdojo}; Agent Security Bench spans prompt, memory,
+tool, and multi-agent attack surfaces~\cite{zhang2025asb}.
+
+These evaluations observe whether an agent performs a prohibited action, which
+provides a semantically direct outcome but depends on an executable system and
+a triggering interaction. Static package analysis moves the decision earlier:
+it can cover dormant artifacts without running them, but must expose uncertain
+reachability, unsupported languages, and incomplete parsing. Our evaluation
+therefore reports class-conditional detection together with processing
+coverage, abstention, and unresolved outputs. It does not treat the absence of
+a recovered static path as evidence that no runtime behavior exists.
+
+\subsection{Instruction Integrity and Runtime Enforcement}
+
+Several defenses constrain how an admitted agent interprets data and exercises
+authority. StruQ separates instructions from data through a structured query
+interface and model training~\cite{chen2025struq}. Task Shield checks whether
+candidate instructions and tool calls advance the user's declared objective
+~\cite{jia2025taskshield}. CaMeL derives control flow from trusted input and
+tracks capabilities on values passed to tools~\cite{debenedetti2026camel}.
+These mechanisms target indirect injection during task execution; they can
+mediate actions even when the underlying package is already present.
+
+System mechanisms enforce the same principle below the prompt layer.
+IsolateGPT places third-party agent applications in separate contexts with
+explicit interfaces~\cite{wu2025isolategpt}, while AgentSpec provides a policy
+language for runtime constraints over agent actions~\cite{wang2026agentspec}.
+Isolation and policy enforcement limit consequences but do not decide whether
+an artifact is trustworthy before installation. Conversely, a static
+admission decision cannot observe environment-dependent behavior and cannot
+replace least privilege after admission. Read Before You Run occupies this
+upstream boundary: it produces source-grounded pass/review/block evidence for
+the package, leaving runtime mediation to complementary defenses.

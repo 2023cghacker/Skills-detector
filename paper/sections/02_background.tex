@@ -1,0 +1,35 @@
+\section{Background and Threat Model}
+\label{sec:background}
+
+\subsection{Agent Skill Packages}
+
+An Agent Skill is treated as a versioned package containing a primary skill
+document and any referenced instructions, scripts, configuration, manifests,
+and resources.  The package boundary is the unit of analysis.  A single
+document may mix user-facing descriptions with operative instructions, so
+content roles are assigned at section or paragraph granularity rather than by
+filename alone.
+
+\subsection{Threat Model}
+
+The adversary controls every untrusted byte in the package and may distribute
+behavior across artifacts.  The adversary knows the analysis strategy and may
+use paraphrase, aliases, indirection, string construction, dynamic imports,
+reflection, simple encoding, or opaque binaries.  The detector and its policy
+and rule versions are trusted.  The detector neither installs dependencies nor
+imports, invokes, or executes target-supplied content, and it does not contact
+endpoints named by the package.
+
+The method does not claim to recover code obtained only at runtime, behavior
+inside unavailable dependencies, or semantics hidden in unrecoverable encrypted
+or binary content.  Such uncertainty is represented in the output.  In
+particular, \textsc{Pass} is not a proof of safety.
+
+\subsection{Design Goals}
+
+The detector should (G1) remain zero execution; (G2) preserve independence
+between high-level function and internal behavior; (G3) connect cross-file
+evidence; (G4) reduce false positives on legitimate sensitive operations;
+(G5) expose uncertainty instead of silently treating missing analysis as
+benign; and (G6) return evidence that a reviewer can locate in the original
+package.

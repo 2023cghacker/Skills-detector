@@ -1,0 +1,248 @@
+\section{Methodology}
+\label{sec:methodology}
+
+\subsection{Overview}
+
+Let $S$ be one immutable Skill package containing instructions, source code,
+configuration, and auxiliary files.  The detector computes
+\begin{equation}
+\mathcal{A}(S)=(z,F,U,\Gamma), \qquad
+z\in\{\textsc{Pass},\textsc{Review},\textsc{Block}\},
+\label{eq:detector}
+\end{equation}
+where $F$ contains source-grounded findings, $U$ records unresolved analysis,
+and $\Gamma$ records coverage. Equation~\ref{eq:detector} defines the complete
+detector output. The package is never imported, installed, or
+executed.  Figure~\ref{fig:method} gives the pipeline.  It constructs two
+independent views: a high-level summary of what the Skill presents at its
+boundary, and a static account of what its instructions and implementation can
+do.  The views meet only during security review.
+
+\begin{figure*}[!t]
+  \centering
+  \resizebox{0.98\textwidth}{!}{\input{figures/fig1_method.tex}}
+  \caption{Zero-execution analysis. Boundary text produces a high-level
+  functional summary. Operative instructions, code, and configuration produce
+  evidence records and a cross-file behavior graph. The final reviewer combines
+  both views with the risk taxonomy and explicit coverage.}
+  \label{fig:method}
+\end{figure*}
+
+\subsection{Artifact Parsing and View Separation}
+\label{sec:parsing}
+
+\textbf{Input and bounds.} The parser accepts either a directory, regular
+files streamed from a fixed Git commit, or one selected subtree of a repository
+archive. It skips symbolic links and dependency/build directories and enforces
+limits of 128 files, 256~KiB per file, and 750,000 decoded characters per
+package. Archive members with absolute paths, parent traversal, or symbolic
+link type are ignored. Reaching a bound sets a truncation flag; it does not
+turn omitted content into benign evidence.
+
+\textbf{Separated views.} The parser treats \texttt{SKILL.md} as a mixed
+document. Name, description, overview, purpose, usage, inputs, outputs, and
+capability sections form the boundary view $T_H$. Operational sections such
+as instructions, setup, commands, rules, and examples form the instruction
+view $T_I$. Fenced code is excluded from $T_H$. Every instruction paragraph
+retains its file and first line. Source and configuration files form $T_C$
+and $T_K$; neither is exposed to high-level extraction. Ambiguous prose is
+excluded from $T_H$ rather than allowing implementation details to enlarge the
+Skill's stated function.
+
+\textbf{Output.} This stage emits $(T_H,T_I,T_C,T_K)$, a file inventory, and
+initial coverage $\Gamma_0$. The two downstream branches receive disjoint
+inputs.
+
+\subsection{High-Level Function Extraction}
+\label{sec:function}
+
+The function branch receives only $T_H$ and produces
+\begin{equation}
+H=(g,I,O,Q,E,V,c_H),
+\label{eq:function-summary}
+\end{equation}
+where $g$ is the stated goal; $I$ and $O$ are input and output classes; $Q$ is
+the stated operation scope and resource set; $E$ lists named external
+services; $V$ lists visible side effects; and
+$c_H\in\{\mathsf{sufficient},\mathsf{partial},\mathsf{minimal}\}$ describes
+completeness. A schema-constrained language model performs extraction, not
+security classification. Equation~\ref{eq:function-summary} is the only
+information passed from this branch to review. The model receives neither
+code, rules, risk findings, nor
+labels. Empty or vague descriptions therefore yield sparse fields rather than
+inferred permissions. Local validation rejects missing fields, additional
+fields, and values outside the closed schema.
+
+This separation is essential: if code were allowed to define $H$, an
+implementation could justify any behavior after the fact. Conversely, a
+minimal $H$ is not evidence of malice. It limits what can be established as
+in-scope and increases uncertainty at review time.
+
+\subsection{Static Behavior Recovery}
+\label{sec:behavior}
+
+The behavior branch extracts only security-relevant facts. Ordinary local
+computation is retained only when it propagates a sensitive value or reaches a
+security-sensitive operation.
+
+\subsubsection{Instruction Evidence}
+
+Rules first identify explicit instruction override, concealment, confirmation
+bypass, safeguard weakening, destructive actions, and download--execute
+idioms. A second schema-constrained model analyzes location-preserving
+instruction segments to capture paraphrases. Each record contains an action,
+object, destination, authorization state, user visibility, condition, segment
+identifier, and confidence. The model is asked to extract requested behavior,
+not to classify the package. Outputs that cite a nonexistent segment or use an
+out-of-taxonomy action are retried and then rejected.
+
+\subsubsection{Objects and Operations}
+
+A versioned object library maps observable aliases, paths, environment names,
+and API signatures to normalized classes such as SSH keys, cloud credentials,
+API tokens, browser authentication data, password stores, wallet secrets, and
+private communications. Each match retains object class, sensitivity, match
+type, file, line, and confidence. Separately, operation rules locate read,
+enumeration, network transfer, process creation, dynamic evaluation,
+download--execute, persistence, privilege change, and destructive operations.
+An object mention alone is not a malicious finding; it becomes useful only
+when connected to an operation or an explicit hostile instruction.
+
+\subsubsection{Cross-File Behavior Graph}
+
+For Python artifacts, we parse abstract syntax trees without importing target
+modules. Let $\mathcal{F}$ be the set of module bodies and top-level functions.
+The graph
+\begin{equation}
+G=(V,E),\quad V=V_A\cup V_F\cup V_P,\quad
+E=E_{\mathrm{contains}}\cup E_{\mathrm{calls}},
+\label{eq:graph}
+\end{equation}
+contains artifact nodes $V_A$, function nodes $V_F$, and recovered taint-path
+evidence $V_P$. Equation~\ref{eq:graph} separates package containment from
+resolved call edges. Import aliases and local module names resolve calls across
+files. Unresolved calls remain in $U$.
+
+Value flow is computed over the finite domain
+$\mathcal{D}=2^{\mathcal{S}\cup\mathcal{P}}$, where $\mathcal{S}$ contains
+normalized sensitive-source labels and $\mathcal{P}$ contains symbolic formal
+parameters. An environment $\rho_f:x\mapsto\mathcal{D}$ maps variables in
+function $f$ to may-taint sets. Assignments copy sets, container and string
+operations take their union, known transformations preserve taint, and source
+APIs add an element of $\mathcal{S}$. For each function we compute
+\begin{equation}
+\Sigma_f=(R_f,K_f,C_f),
+\label{eq:summary}
+\end{equation}
+where $R_f$ is the taint set that may reach a return, $K_f$ is the set of sink
+facts, and $C_f$ is the set of resolved callees. The summary in
+Equation~\ref{eq:summary} is parameterized by symbolic formal inputs. At a call
+$f\rightarrow g$,
+formal labels in $\Sigma_g$ are substituted with the caller's argument sets;
+returned labels and sink facts are then propagated into $f$. Call traces are
+canonicalized as simple paths, so recursive cycles cannot grow summaries
+indefinitely. Because transfer functions are monotone and $\mathcal{D}$ is
+finite, repeated summary evaluation reaches a fixed point:
+\begin{equation}
+\Sigma^{(i+1)}=\mathcal{T}(\Sigma^{(i)}),\qquad
+\Sigma^{*}=\mathcal{T}(\Sigma^{*}).
+\label{eq:fixedpoint}
+\end{equation}
+Equation~\ref{eq:fixedpoint} terminates because the transfer is monotone over a
+finite domain.
+
+A reported path is
+\begin{equation}
+\pi=\langle s,f_0,f_1,\ldots,f_k,q,d,L\rangle,
+\label{eq:behavior-path}
+\end{equation}
+where $s$ is a normalized sensitive source, $f_0\ldots f_k$ is the recovered
+call chain, $q$ is a network or process sink, $d$ is its literal destination
+when available, and $L$ contains source and sink locations. This distinguishes
+a connected source-to-sink flow from two unrelated keyword matches;
+Equation~\ref{eq:behavior-path} is the evidence record exposed to review.
+
+\begin{figure}[!t]
+  \centering
+  \resizebox{0.98\columnwidth}{!}{\input{figures/fig2_behavior_graph.tex}}
+  \caption{Example cross-file path recovered by the implemented analyzer.
+  Function summaries substitute the caller's API-token taint for the callee's
+  formal parameter and propagate it to the network payload.}
+  \label{fig:behavior-graph}
+\end{figure}
+
+Figure~\ref{fig:behavior-graph} illustrates how a caller's sensitive value is
+substituted into a callee summary and propagated to a network sink.
+
+The current frontend constructs these paths for Python. JavaScript,
+TypeScript, and shell files still receive operation and object scanning but are
+listed as unsupported for syntax-tree flow recovery. Python parse errors,
+reflection, unresolved dynamic dispatch, and computed destinations are also
+reported in $U$. For artifacts without a recovered data-flow path, a same-file
+line-window association may be retained as lower-confidence evidence with
+unknown reachability; it is never presented as an interprocedural path.
+Failure to reach the fixed point within the bounded round schedule is likewise
+recorded in $U$ rather than treated as absence of flow.
+
+\textbf{Output.} The behavior branch emits instruction records $B_I$, rule
+evidence $B_R$, paths $\mathcal{P}$, graph $G$, unresolved items $U$, and
+coverage $\Gamma$ (parsed files, functions, call edges, paths, parse failures,
+unsupported code, and unresolved calls).
+
+\subsection{Evidence-Grounded Security Review}
+\label{sec:review}
+
+The final reviewer receives $(H,B_I,B_R,\mathcal{P},U,\Gamma)$ under a closed
+schema. Risk type and disposition are separate. Risk type follows three
+domains: malicious attack (instruction hijacking, information theft, resource
+destruction or leakage, and unauthorized operation), design defect (sensitive
+information protection, input handling, authentication/authorization, and
+runtime environment), and legal risk (copyright, privacy, compliance,
+certificate, and license). Disposition depends on severity, evidence
+confidence, authorization, impact, static reachability, and coverage; a severe
+design defect can therefore be blocked without being labeled an intentional
+attack.
+
+For a behavior record $b$, review compares four observable dimensions with
+$H$:
+\begin{equation}
+\begin{aligned}
+R(H,b)&=(R_a,R_o,R_d,R_e),\\
+R_j&\in\{\mathsf{supported},\mathsf{unsupported},\mathsf{unknown}\}.
+\end{aligned}
+\label{eq:consistency}
+\end{equation}
+corresponding to action, object scope, destination, and side effect. Exact
+matches and explicit policy violations in Equation~\ref{eq:consistency} are
+supplied as deterministic evidence;
+the model handles bounded semantic cases. Every risk finding must cite an
+existing instruction, rule, object, or graph evidence identifier. Local
+validation enforces the citation set, risk taxonomy, JSON schema, and the
+invariant that a malicious label has at least one malicious-attack finding.
+Invalid output is retried at most three times; persistent failure is logged and
+the package is excluded from binary metrics rather than counted benign.
+
+Let $B$ denote a supported high-impact risk that warrants rejection and $W$
+denote a material risk or uncertainty that requires review. The decision is
+\begin{equation}
+z=\begin{cases}
+\textsc{Block}, & B,\\
+\textsc{Review}, & \neg B\land W,\\
+\textsc{Pass}, & \text{otherwise}.
+\end{cases}
+\label{eq:decision}
+\end{equation}
+Equation~\ref{eq:decision} keeps disposition separate from risk type.
+\textsc{Pass} is consequently a statement about analyzed evidence, not a proof
+that the package is harmless. The returned record includes the binary label,
+three-way disposition, confidence, cited findings, graph coverage, and $U$.
+
+\subsection{Analysis Invariants}
+
+The design enforces three invariants. \emph{View separation} prevents internal
+implementation from expanding $H$. \emph{Evidence grounding} restricts every
+risk claim to identifiers produced by static extraction. \emph{Uncertainty
+preservation} exposes unsupported languages, parse failures, unresolved calls,
+truncation, and persistent model failures instead of treating them as negative
+evidence. These invariants do not make static analysis complete; they delimit
+what the detector is allowed to claim without running a Skill.

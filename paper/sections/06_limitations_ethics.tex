@@ -1,0 +1,24 @@
+\section{Limitations and Ethical Considerations}
+\label{sec:limitations}
+
+Static analysis cannot guarantee the absence of behavior hidden behind dynamic
+loading, remote dependencies, environment-specific dispatch, encryption, or
+opaque binaries. The graph currently provides AST-level flow only for Python;
+other languages retain lexical evidence, and the labeled corpora do not contain
+enough malicious Python flow to measure path recall. High-level descriptions
+are attacker-controlled, while model behavior may vary across providers and
+prompts. Consequently, \textsc{Pass} is not a proof of safety.
+
+The source-disjoint evaluation is balanced and therefore does not estimate
+real-world prevalence. Thirteen Ours samples and ten direct-model samples remain
+unresolved after bounded retries; primary comparisons use the 977-package
+intersection rather than imputing outcomes. The current-community scan retains
+only primary Skill documents and has no truth labels. Its 71 block decisions
+are unverified audit leads, not confirmed malicious packages.
+
+Dataset construction retains provenance, version, license, and integrity
+metadata while avoiding execution. Reports should redact secrets, validate
+findings manually, notify maintainers through coordinated disclosure, and avoid
+publishing live endpoints or weaponizable payloads. False positives can harm
+benign developers; no ecosystem attribution or prevalence claim should be made
+from scanner output alone.

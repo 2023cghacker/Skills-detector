@@ -1,0 +1,73 @@
+\section{Introduction}
+\label{sec:introduction}
+
+Agent Skills turn instructions into supply-chain artifacts. A Skill can bundle
+persistent natural-language directives with scripts, manifests, installation
+commands, and external resources. Once admitted, this package influences an
+agent while inheriting its access to files, credentials, networks, and
+processes. The first security decision is therefore not whether a particular
+action should run, but whether the package should enter the agent's trust
+boundary at all.
+
+The threat is already visible in public ecosystems. A recent measurement of
+98,380 Skills confirmed 157 malicious packages through static triage, sandbox
+execution, and expert review~\cite{liu2026maliciousskills}. This workflow
+produces strong behavioral evidence, but only after a candidate is executed and
+its trigger is reached. Runtime defenses likewise mediate an agent after
+admission. Registries, enterprise gateways, and local agents still need a
+pre-installation filter that can inspect untrusted packages without invoking
+their code or dependencies.
+
+That constraint makes the problem fundamentally ambiguous. Sensitive file
+access, network transfer, process creation, and credential use are both useful
+automation primitives and components of collection, exfiltration, or remote
+execution. Instructions may state intent, conceal it, or redefine the apparent
+purpose of the package. Static paths connect operations across files, yet a
+connected path alone does not establish authorization. Existing Skill
+detectors recover increasingly rich artifact evidence~\cite{wang2026malskills},
+but recent source-disjoint evaluation shows that repository provenance can
+dominate apparent accuracy~\cite{wang2026maliciousskillbench}. The unresolved
+question is therefore empirical: \emph{does structured, source-grounded static
+evidence improve malicious-Skill detection beyond direct semantic review when
+provenance is separated?}
+
+We answer this question with \emph{Read Before You Run}, a zero-execution
+analysis pipeline. The detector reads every target file as bounded data and
+keeps the package's boundary description separate from operational
+instructions and implementation. It normalizes sensitive objects and
+operations, constructs cross-file Python call graphs with fixed-point
+interprocedural taint summaries, and preserves unresolved calls, unsupported
+languages, truncation, and invalid outputs. A schema-constrained reviewer can
+therefore return \textsc{Pass}, \textsc{Review}, or \textsc{Block} while citing
+the evidence used for each finding.
+
+The source-disjoint experiment rejects the hoped-for accuracy advantage. On
+the 977 packages successfully processed by all compared methods, Ours produces
+one false positive but detects only 57/491 malicious Skills. A one-call model
+that sees only the primary Skill document detects 109/491 at comparable
+precision and is significantly more accurate. The independently extracted
+high-level function also provides no measurable benefit on the smaller
+benchmark. In contrast, the same pipeline appears strong on a 200-package set
+whose labels are perfectly confounded with provenance. The comparison exposes
+a practical boundary: structured evidence supports low-false-positive triage
+and auditable inspection, but does not yet improve source-disjoint detection
+over direct document review.
+
+This paper makes three contributions:
+\begin{itemize}
+  \item \textbf{A traceable zero-execution pipeline} that connects constrained
+  instruction analysis, versioned sensitive-object rules, cross-file call
+  recovery, and interprocedural taint summaries without loading target code.
+  \item \textbf{A source-disjoint comparison} against frozen rules and direct
+  document classification, reporting paired significance, processing failures,
+  model cost, and three-way review workload rather than accuracy alone.
+  \item \textbf{A falsification result for structured Skill detection:} the
+  complete pipeline and its high-level function view fail to improve detection
+  over direct semantic review, while retaining a low-FPR, evidence-bearing
+  operating point and scalable audit front end.
+\end{itemize}
+
+Section~\ref{sec:background} defines the threat model,
+Section~\ref{sec:related} reviews adjacent defenses,
+Section~\ref{sec:methodology} presents the detector, and
+Section~\ref{sec:evaluation} evaluates its supported and rejected claims.
