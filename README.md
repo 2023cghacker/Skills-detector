@@ -63,45 +63,39 @@ The original research workflow remains the detailed design reference:
   <img src="assets/method-overview.png" alt="Detailed research workflow" width="92%" />
 </p>
 
-## Current benchmark snapshot
+## Source-disjoint benchmark
 
 <p align="center">
   <img src="assets/benchmark-results.svg" alt="Current benchmark results" width="100%" />
 </p>
 
-The current model-assisted run uses the fixed 200-package MalSkillsBench commit
-`46d60f09cef00fd3a9c01272be63dbd273ab4444`. Three packages remain unresolved
-after bounded retries, leaving 98 benign and 99 malicious packages.
+The primary experiment uses 500 malicious and 500 benign records sampled from
+the official source-disjoint test split of MaliciousSkillBench. All three
+methods complete the same 977-package paired subset:
 
-- Evaluation coverage: **197/200 (98.50%)**
-- Accuracy: **151/197 (76.65%)**
-- Malicious precision: **54/55 (98.18%)**
-- Malicious recall: **54/99 (54.55%)**
-- Malicious F1: **70.13%**
-- Benign false-positive rate: **1/98 (1.02%)**
-- Malicious `BLOCK/REVIEW` containment: **99/99 (100.00%)**
-- Review workload: **120/197 (60.91%)**
-- Benign automatic pass: **22/98 (22.45%)**
+- **Ours:** precision **57/58 (98.28%)**, recall **57/491 (11.61%)**, F1
+  **20.77%**, FPR **1/486 (0.21%)**.
+- **Direct document model:** precision **109/112 (97.32%)**, recall
+  **109/491 (22.20%)**, F1 **36.15%**, FPR **3/486 (0.62%)**.
+- **Frozen rules:** precision **53/106 (50.00%)**, recall **53/491 (10.79%)**,
+  F1 **17.76%**, FPR **53/486 (10.91%)**.
 
-On the same 197 packages, frozen rules achieve 32.47% F1, 25/99 (25.25%)
-malicious recall, and 30/98 (30.61%) false-positive rate. The semantic pipeline
-therefore improves the paired rule baseline, but its absolute recall and review
-load are not sufficient for unattended admission control.
+Ours minimizes false positives, but the one-call document baseline is correct
+on 54 samples that Ours misses versus four in the opposite direction (exact
+McNemar `p = 3.17e-12`). The result is intentionally reported as a limitation:
+the structured pipeline is useful for low-FPR evidence triage, but does not yet
+improve source-disjoint detection over direct semantic review.
 
-The central ablation is negative: removing the independently extracted
-high-level function changes only two of 196 common predictions and slightly
-improves F1 from 70.13% to 71.79% (exact McNemar `p = 0.50`). Aggregate gains
-must therefore not be attributed to that component on this benchmark.
+The earlier 200-package MalSkillsBench result—**54/55 (98.18%)** malicious
+precision and **54/99 (54.55%)** recall—is retained only as a diagnostic because
+source and owner are perfectly correlated with its labels. Removing the
+independent high-level function also slightly improves that diagnostic F1
+(71.79% versus 70.13%; exact McNemar `p = 0.50`).
 
-The benchmark's source metadata correlates with its labels. Labels and
-label-revealing paths are withheld from detector input, but the result should
-still be interpreted as in-benchmark discrimination rather than
-source-independent generalization.
-
-A separate repository-matched front-end stress test scans **1,000/1,000**
-indexed Skills from 212 repositories in 352.4 seconds using a 3.253-GiB bounded
-archive cache. Its `safe` / `suspicious` fields are candidate-stage index labels,
-not confirmed ground truth, so the run is not reported as detection accuracy.
+The deterministic front end additionally scans **1,000/1,000** current
+community Skills across ten categories in 39.3 seconds, returning 896 `pass`,
+33 `review`, and 71 `block` candidates. This corpus has no truth labels; these
+counts are not precision, prevalence, or confirmed findings.
 
 ## What is implemented
 
@@ -200,6 +194,34 @@ Bounded diagnostics are also available:
 ```bash
 skills-detector evaluate ... --mode model --per-class-limit 3
 skills-detector evaluate ... --mode model --sample-id owner/skill-name
+```
+
+For the source-disjoint Parquet corpus:
+
+```bash
+skills-detector evaluate-parquet \
+  --dataset data/downloaded/malicious-skill-bench/source-disjoint-1000/sample.parquet \
+  --mode model --output runs/sd1000-ours
+
+skills-detector evaluate-parquet \
+  --dataset data/downloaded/malicious-skill-bench/source-disjoint-1000/sample.parquet \
+  --mode direct --output runs/sd1000-direct
+
+python scripts/compare_runs.py \
+  --left runs/sd1000-ours/predictions.jsonl \
+  --right runs/sd1000-direct/predictions.jsonl \
+  --output runs/sd1000-ours-vs-direct.json
+```
+
+Use `--shard-count`, `--shard-index`, and `--resume` for bounded parallel runs.
+Every failed sample is recorded and the remaining corpus continues.
+
+An unlabeled frozen community corpus can be audited with:
+
+```bash
+skills-detector audit-community \
+  --dataset-dir data/downloaded/community-live \
+  --mode rules --output runs/community-rules
 ```
 
 ## Prepare bounded evaluation corpora
