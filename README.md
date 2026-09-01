@@ -17,13 +17,6 @@ untrusted data; extracts source-grounded security evidence; and returns
 `pass`, `review`, or `block` without installing dependencies, importing target
 modules, or executing Skill content.
 
-The project accompanies the research paper **Read Before You Run:
-Zero-Execution Detection of Malicious Agent Skills**.
-
-The verified anonymous manuscript and reproducible LaTeX source are available
-in [`paper/`](paper/); the rendered paper is
-[`Read-Before-You-Run.pdf`](paper/Read-Before-You-Run.pdf).
-
 ## Why this project exists
 
 Agent Skills cross a trust boundary that ordinary prompt filters do not cover.
