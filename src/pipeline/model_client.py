@@ -88,7 +88,8 @@ def _deepseek_request(
     accumulated = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
     last_error: ValueError | None = None
     last_finish_reason = "unknown"
-    for _ in range(2):
+    validation_attempts = 3
+    for attempt in range(validation_attempts):
         response = client.chat.completions.create(
             model=model,
             messages=messages,
@@ -108,8 +109,17 @@ def _deepseek_request(
             return result, accumulated
         except ValueError as exc:
             last_error = exc
+            if attempt + 1 < validation_attempts:
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        "The previous object did not satisfy the required schema: "
+                        f"{exc}. Return a corrected JSON object only; replace null with "
+                        "a schema-valid explicit value and include every required field."
+                    ),
+                })
     raise ValueError(
-        f"DeepSeek returned no schema-valid JSON after 2 attempts "
+        f"DeepSeek returned no schema-valid JSON after {validation_attempts} attempts "
         f"(finish_reason={last_finish_reason}): {last_error}"
     )
 

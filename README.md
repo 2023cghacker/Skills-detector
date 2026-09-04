@@ -3,7 +3,6 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/2023cghacker/Skills-detector/actions"><img alt="Active development" src="https://img.shields.io/badge/status-active%20development-2563eb"></a>
   <img alt="Zero target execution" src="https://img.shields.io/badge/analysis-zero%20target%20execution-0891b2">
   <img alt="Python 3.10+" src="https://img.shields.io/badge/python-3.10%2B-3776ab">
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-16a34a"></a>
@@ -16,6 +15,9 @@ It treats instructions, code, configuration, and bundled resources as
 untrusted data; extracts source-grounded security evidence; and returns
 `pass`, `review`, or `block` without installing dependencies, importing target
 modules, or executing Skill content.
+
+The system design and evaluation are described in
+[Read Before You Run: Zero-Execution Detection of Malicious Agent Skills](paper/Read-Before-You-Run.pdf).
 
 ## Why this project exists
 
@@ -48,9 +50,9 @@ The pipeline has four bounded stages:
 2. **High-level function extraction** sees boundary information only and
    extracts the goal, inputs, outputs, object scope, named services, and visible
    effects.
-3. **Static behavior recovery** combines sensitive-object rules, instruction
-   analysis, code/configuration patterns, a cross-file Python AST call graph,
-   and fixed-point interprocedural taint summaries.
+3. **Static behavior recovery** maps operative prose, fenced shell, Python,
+   and JavaScript into three typed path forms: remote acquisition, direct
+   system effect, and sensitive source-to-sink flow.
 4. **Policy review** compares function and behavior while independently
    checking malicious attacks, design defects, and legal or compliance risks.
 
@@ -67,27 +69,27 @@ The original research workflow remains the detailed design reference:
 </p>
 
 The primary experiment uses 500 malicious and 500 benign records sampled from
-the official source-disjoint test split of MaliciousSkillBench. All three
-methods complete the same 977-package paired subset:
+the official source-disjoint test split of MaliciousSkillBench. All methods
+below complete the same 977-package paired subset:
 
-- **Ours:** precision **57/58 (98.28%)**, recall **57/491 (11.61%)**, F1
-  **20.77%**, FPR **1/486 (0.21%)**.
+- **Ours:** precision **88/89 (98.88%)**, recall **88/491 (17.92%)**, F1
+  **30.34%**, FPR **1/486 (0.21%)**.
 - **Direct document model:** precision **109/112 (97.32%)**, recall
   **109/491 (22.20%)**, F1 **36.15%**, FPR **3/486 (0.62%)**.
 - **Frozen rules:** precision **53/106 (50.00%)**, recall **53/491 (10.79%)**,
   F1 **17.76%**, FPR **53/486 (10.91%)**.
 
-Ours minimizes false positives, but the one-call document baseline is correct
-on 54 samples that Ours misses versus four in the opposite direction (exact
-McNemar `p = 3.17e-12`). The result is intentionally reported as a limitation:
-the structured pipeline is useful for low-FPR evidence triage, but does not yet
-improve source-disjoint detection over direct semantic review.
+Multi-artifact recovery improves recall over the Python-only implementation
+without increasing its false-positive rate. Direct review remains the
+recall-oriented operating point; Skills Detector provides the more selective,
+source-localized admission point.
 
-The earlier 200-package MalSkillsBench result—**54/55 (98.18%)** malicious
-precision and **54/99 (54.55%)** recall—is retained only as a diagnostic because
-source and owner are perfectly correlated with its labels. Removing the
-independent high-level function also slightly improves that diagnostic F1
-(71.79% versus 70.13%; exact McNemar `p = 0.50`).
+On the 200-package MalSkillsBench development diagnostic, Ours reaches
+**89/90 (98.89%)** malicious precision, **89/99 (89.90%)** recall, and
+**94.18%** F1. The multi-artifact graph recovers structured paths in
+**94/100 (94.00%)** malicious packages, compared with **0/100 (0.00%)** for the
+Python-only graph. This corpus is retained for component diagnosis because its
+source and owner are label-confounded.
 
 The deterministic front end additionally scans **1,000/1,000** current
 community Skills across ten categories in 39.3 seconds, returning 896 `pass`,
@@ -101,9 +103,13 @@ counts are not precision, prevalence, or confirmed findings.
 - Static operations covering read, enumerate, collect, transmit, execute,
   download, permission change, persistence, concealment, and destructive
   behavior.
-- Cross-file Python AST call resolution and fixed-point interprocedural source-to-sink taint
-  paths, with finite simple call traces and explicit non-convergence, parse
-  failures, unresolved calls, and unsupported language files.
+- Location-preserving extraction of operative prose and fenced code.
+- Cross-file Python AST summaries and Tree-sitter JavaScript summaries for
+  interprocedural source-to-sink paths, plus bounded shell command chains.
+- Direct-effect paths for protected-system writes, persistence, destructive
+  deletion, permission weakening, reverse shells, and dynamic execution.
+- A high-specificity deterministic gate that requires a typed path and cannot
+  be triggered by an isolated URL, API name, or sensitive-object mention.
 - Independent declaration, instruction, and final-review model calls with
   closed JSON schemas and evidence-ID validation.
 - DeepSeek V4 Flash as the default model provider, with thinking disabled and

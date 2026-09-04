@@ -1,8 +1,10 @@
-"""Cross-file Python behavior graph and interprocedural taint summaries.
+"""Bounded multi-artifact behavior graph and static path recovery.
 
-Target source is parsed as data with :mod:`ast`; it is never imported or
-executed. Unsupported languages and unresolved calls remain explicit coverage
-gaps instead of being interpreted as safe.
+Python and JavaScript are parsed into syntax-aware summaries, Markdown code
+fences retain their source locations, and shell/prose chains produce typed
+instruction paths. Target content is never imported or executed. Unsupported
+constructs and unresolved calls remain explicit coverage gaps instead of being
+interpreted as safe.
 """
 
 from __future__ import annotations
@@ -13,12 +15,42 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Mapping
 
 from .sensitive_objects import SensitiveObjectLibrary
+from .javascript_graph import JavaScriptAnalyzer, parse_javascript_functions, JS_SUFFIXES
+from .instruction_graph import extract_instruction_paths, fenced_blocks
 
 
 CODE_SUFFIXES = {".py", ".js", ".jsx", ".ts", ".tsx", ".sh", ".bash", ".zsh", ".ps1"}
 TRANSMIT_CALLS = {"requests.post", "requests.put", "requests.patch", "httpx.post", "httpx.put", "httpx.patch"}
 PROCESS_CALLS = {"subprocess.run", "subprocess.call", "subprocess.Popen", "os.system"}
-TRANSFORMS = {"b64encode", "b64decode", "encode", "decode", "dumps", "loads", "compress", "encrypt", "join", "format", "read", "read_text", "read_bytes"}
+DYNAMIC_CALLS = {"eval", "exec"}
+TRANSFORMS = {"b64encode", "b64decode", "encode", "decode", "dumps", "loads", "compress", "encrypt", "join", "format", "read", "read_text", "read_bytes", "compile"}
+
+
+def _system_target(value: str) -> bool:
+    normalized = value.lower().replace("\\", "/")
+    return (
+        normalized.startswith(("/etc/", "/var/log/", "/root/", "~/.ssh/", "~/.config/"))
+        or any(marker in normalized for marker in ("/.bashrc", "/.profile", "authorized_keys", "sitecustomize.py", "audit.log", "session.log"))
+    )
+
+
+def _with_embedded_code(blobs: Mapping[str, bytes]) -> tuple[dict[str, bytes], list[dict[str, Any]]]:
+    """Add fenced Python/JavaScript as bounded virtual files with original line numbers."""
+    expanded = dict(blobs)
+    embedded: list[dict[str, Any]] = []
+    language_suffix = {"python": ".py", "py": ".py", "javascript": ".js", "js": ".js"}
+    for file in sorted(blobs):
+        if Path(file).suffix.lower() not in {".md", ".markdown"}:
+            continue
+        text = blobs[file][:262_144].decode("utf-8", errors="replace").replace("\x00", "")
+        for index, (language, line, body) in enumerate(fenced_blocks(text), 1):
+            suffix = language_suffix.get(language)
+            if not suffix or not body.strip():
+                continue
+            virtual = f"__embedded__/{file}.fence{index}{suffix}"
+            expanded[virtual] = (("\n" * (line - 1)) + body).encode("utf-8")
+            embedded.append({"virtual_file": virtual, "source_file": file, "start_line": line, "language": language})
+    return expanded, embedded
 
 
 def _module_name(path: str) -> str:
@@ -124,7 +156,20 @@ class PythonBehaviorAnalyzer:
                 self._expr(info, statement.value, state)
             elif isinstance(statement, ast.Return):
                 state.returns.update(self._expr(info, statement.value, state))
-            elif isinstance(statement, (ast.If, ast.For, ast.AsyncFor, ast.While, ast.With, ast.AsyncWith, ast.Try)):
+            elif isinstance(statement, (ast.With, ast.AsyncWith)):
+                branch_state = _State(env={name: set(values) for name, values in state.env.items()})
+                for item in statement.items:
+                    taints = self._expr(info, item.context_expr, branch_state)
+                    if item.optional_vars is not None:
+                        self._assign(item.optional_vars, taints, branch_state)
+                self._statements(info, statement.body, branch_state)
+                for name, values in branch_state.env.items():
+                    state.env.setdefault(name, set()).update(values)
+                state.returns.update(branch_state.returns)
+                state.sinks.extend(branch_state.sinks)
+                state.calls.update(branch_state.calls)
+                state.unresolved_calls.update(branch_state.unresolved_calls)
+            elif isinstance(statement, (ast.If, ast.For, ast.AsyncFor, ast.While, ast.Try)):
                 branches = [getattr(statement, attr, []) for attr in ("body", "orelse", "finalbody")]
                 branches.extend(handler.body for handler in getattr(statement, "handlers", []))
                 for branch in branches:
@@ -132,8 +177,6 @@ class PythonBehaviorAnalyzer:
                         continue
                     branch_state = _State(
                         env={name: set(values) for name, values in state.env.items()},
-                        returns=set(state.returns), sinks=list(state.sinks), calls=set(state.calls),
-                        unresolved_calls=set(state.unresolved_calls),
                     )
                     self._statements(info, branch, branch_state)
                     for name, values in branch_state.env.items():
@@ -177,15 +220,36 @@ class PythonBehaviorAnalyzer:
         positional = [self._expr(info, arg, state) for arg in node.args]
         keyword = [self._expr(info, item.value, state) for item in node.keywords]
         combined = set().union(*positional, *keyword, set())
+        if isinstance(node.func, ast.Attribute):
+            combined.update(self._expr(info, node.func.value, state))
         literal_args = [_literal(arg) for arg in node.args]
         if raw_name in {"os.getenv", "getenv", "os.environ.get", "open", "Path", "pathlib.Path"} and literal_args:
             combined.update(self._literal_taints(literal_args[0], info.file))
+        if raw_name == "open" and literal_args:
+            mode = literal_args[1] if len(literal_args) > 1 else "r"
+            if any(flag in mode for flag in "wax") and _system_target(literal_args[0]):
+                state.sinks.append(SinkFact(
+                    "write_system_resource", info.file, node.lineno, raw_name,
+                    literal_args[0][:160], frozenset({"source:instruction_command"}),
+                ))
+            elif not any(flag in mode for flag in "wax"):
+                combined.add("source:local_file_content")
+        if raw_name == "os.chmod" and literal_args and _system_target(literal_args[0]):
+            state.sinks.append(SinkFact(
+                "weaken_permissions", info.file, node.lineno, raw_name,
+                literal_args[0][:160], frozenset({"source:instruction_command"}),
+            ))
+        if raw_name.rsplit(".", 1)[-1] in {"b64decode", "decodebytes", "fromhex", "unhexlify"}:
+            if any(isinstance(arg, ast.Constant) and isinstance(arg.value, (str, bytes)) and len(arg.value) >= 32 for arg in node.args):
+                combined.add("source:embedded_payload")
 
         operation = ""
         if raw_name in TRANSMIT_CALLS or any(raw_name.endswith(f".{name}") for name in ("post", "put", "patch", "send")):
             operation = "transmit"
         elif raw_name in PROCESS_CALLS:
             operation = "execute_process"
+        elif raw_name in DYNAMIC_CALLS:
+            operation = "dynamic_execute"
         if operation and combined:
             destination = literal_args[0][:160] if literal_args and literal_args[0] else "dynamic"
             state.sinks.append(SinkFact(operation, info.file, node.lineno, raw_name, destination, frozenset(combined)))
@@ -206,7 +270,7 @@ class PythonBehaviorAnalyzer:
 
         if raw_name and not self._known_external(raw_name):
             state.unresolved_calls.add(raw_name)
-        return combined if raw_name.rsplit(".", 1)[-1] in TRANSFORMS or isinstance(node.func, ast.Attribute) else set()
+        return combined if raw_name == "open" or raw_name.rsplit(".", 1)[-1] in TRANSFORMS or isinstance(node.func, ast.Attribute) else set()
 
     def _resolve_call(self, info: FunctionInfo, raw_name: str) -> str:
         if not raw_name:
@@ -230,7 +294,10 @@ class PythonBehaviorAnalyzer:
         return output
 
     def _literal_taints(self, value: str, file: str) -> set[str]:
-        return {f"source:{item['object']}" for item in self.object_library.extract(value, file)}
+        taints = {f"source:{item['object']}" for item in self.object_library.extract(value, file)}
+        if "http://" in value.lower() or "https://" in value.lower():
+            taints.add("source:external_payload")
+        return taints
 
     @staticmethod
     def _known_external(name: str) -> bool:
@@ -274,36 +341,88 @@ def _parse_functions(blobs: Mapping[str, bytes]) -> tuple[dict[str, FunctionInfo
 
 def build_behavior_graph(blobs: Mapping[str, bytes], object_findings: list[dict[str, Any]], object_library: SensitiveObjectLibrary) -> dict[str, Any]:
     """Return a typed graph, coverage record, and concrete source-to-sink paths."""
-    functions, parse_errors, parsed_files = _parse_functions(blobs)
+    analysis_blobs, embedded_artifacts = _with_embedded_code(blobs)
+    functions, parse_errors, parsed_files = _parse_functions(analysis_blobs)
     summaries, rounds, converged = PythonBehaviorAnalyzer(functions, object_library).run()
+    js_functions, js_parse_errors, js_parsed_files, js_skipped_files = parse_javascript_functions(analysis_blobs, object_library)
+    js_summaries, js_rounds, js_converged = JavaScriptAnalyzer(js_functions, object_library).run()
+    instruction = extract_instruction_paths(blobs)
     paths: list[dict[str, Any]] = []
     evidence: list[dict[str, Any]] = []
     seen: set[tuple[Any, ...]] = set()
+
+    def append_sink_path(function_id: str, source_file: str, sink: Any, token: str, relation_basis: str, confidence: float) -> None:
+        if token.startswith("source:"):
+            source = token.split(":", 1)[1]
+        elif token.startswith("param:"):
+            source = "user_input"
+        else:
+            return
+        if sink.operation == "transmit" and source in {"external_payload", "external_response"}:
+            return
+        if sink.operation == "execute_process" and source not in {"external_payload", "external_response"}:
+            return
+        operation = "download_execute" if sink.operation == "execute_process" and source in {"external_payload", "external_response"} else sink.operation
+        key = (function_id, source, sink.file, sink.line, operation, sink.call_chain)
+        if key in seen:
+            return
+        seen.add(key)
+        evidence_id = f"G{len(evidence) + 1}"
+        evidence.append({
+            "id": evidence_id, "kind": "taint_path", "source_object": source,
+            "source_function": function_id, "sink_file": sink.file,
+            "sink_line": sink.line, "sink_callee": sink.callee,
+        })
+        object_item = next((item for item in object_findings if item["object"] == source), None)
+        object_ids = [
+            item["id"] for item in object_findings
+            if item["object"] == source and item["file"] == source_file
+        ][:1]
+        paths.append({
+            "operation": operation, "object": source,
+            "object_category": object_item["category"] if object_item else ({
+                "external_payload": "untrusted_input", "external_response": "untrusted_input",
+                "local_file_content": "untrusted_input", "embedded_payload": "untrusted_input",
+                "instruction_command": "system_resource", "user_input": "external_input",
+            }.get(source, "unknown")),
+            "destination": sink.destination, "source_file": source_file,
+            "source_function": function_id, "sink_file": sink.file,
+            "sink_line": sink.line, "call_chain": [function_id, *sink.call_chain],
+            "evidence_ids": [evidence_id, *object_ids], "confidence": confidence,
+            "relation_basis": relation_basis, "reachability": "statically_possible",
+        })
+
     for function_id, summary in summaries.items():
         info = functions[function_id]
         for sink in summary.sinks:
-            for source in sorted(token.split(":", 1)[1] for token in sink.taints if token.startswith("source:")):
-                key = (function_id, source, sink.file, sink.line, sink.operation, sink.call_chain)
-                if key in seen:
-                    continue
-                seen.add(key)
-                evidence_id = f"G{len(evidence) + 1}"
-                evidence.append({"id": evidence_id, "kind": "taint_path", "source_object": source, "source_function": function_id, "sink_file": sink.file, "sink_line": sink.line, "sink_callee": sink.callee})
-                object_ids = [item["id"] for item in object_findings if item["object"] == source and item["file"] == info.file][:1]
-                paths.append({
-                    "operation": sink.operation, "object": source,
-                    "object_category": next((item["category"] for item in object_findings if item["object"] == source), "unknown"),
-                    "destination": sink.destination, "source_file": info.file, "source_function": function_id,
-                    "sink_file": sink.file, "sink_line": sink.line, "call_chain": [function_id, *sink.call_chain],
-                    "evidence_ids": [evidence_id, *object_ids], "confidence": 0.95,
-                    "relation_basis": "interprocedural_taint", "reachability": "statically_possible",
-                })
+            for token in sorted(sink.taints):
+                append_sink_path(function_id, info.file, sink, token, "python_ast_interprocedural_taint", 0.95)
+    for function_id, summary in js_summaries.items():
+        info = js_functions[function_id]
+        for sink in summary.sinks:
+            for token in sorted(sink.taints):
+                append_sink_path(function_id, info.file, sink, token, "javascript_tree_sitter_interprocedural_taint", 0.93)
+
+    paths.extend(instruction["paths"])
+    evidence.extend(instruction["evidence"])
     call_edges = sorted({(caller, callee) for caller, summary in summaries.items() for callee in summary.calls})
-    unsupported_files = sorted(file for file in blobs if Path(file).suffix.lower() in CODE_SUFFIXES and Path(file).suffix.lower() != ".py")
-    unresolved_calls = sorted({call for summary in summaries.values() for call in summary.unresolved_calls})
+    js_call_edges = sorted({(caller, callee) for caller, summary in js_summaries.items() for callee in summary.calls})
+    unsupported_files = sorted(
+        file for file in blobs
+        if Path(file).suffix.lower() in CODE_SUFFIXES
+        and Path(file).suffix.lower() != ".py"
+        and Path(file).suffix.lower() not in JS_SUFFIXES
+    )
+    unresolved_calls = sorted(
+        {call for summary in summaries.values() for call in summary.unresolved_calls}
+        | {call for summary in js_summaries.values() for call in summary.unresolved_calls}
+    )
     nodes = ([{"id": f"file:{file}", "type": "artifact", "file": file} for file in parsed_files]
              + [{"id": function_id, "type": "function", "file": info.file, "line": info.line} for function_id, info in sorted(functions.items())]
-             + [{"id": item["id"], "type": "taint_path", "file": item["sink_file"], "line": item["sink_line"]} for item in evidence])
+             + [{"id": f"file:{file}", "type": "artifact", "file": file} for file in js_parsed_files]
+             + [{"id": function_id, "type": "function", "file": info.file, "line": info.line} for function_id, info in sorted(js_functions.items())]
+             + [{"id": item["id"], "type": "taint_path", "file": item["sink_file"], "line": item["sink_line"]} for item in evidence]
+             + instruction["nodes"])
     path_edges = [
         {
             "source": path["source_function"],
@@ -314,10 +433,28 @@ def build_behavior_graph(blobs: Mapping[str, bytes], object_findings: list[dict[
     ]
     edges = ([{"source": f"file:{info.file}", "target": function_id, "type": "contains"} for function_id, info in sorted(functions.items())]
              + [{"source": caller, "target": callee, "type": "calls"} for caller, callee in call_edges]
-             + path_edges)
+             + [{"source": f"file:{info.file}", "target": function_id, "type": "contains"} for function_id, info in sorted(js_functions.items())]
+             + [{"source": caller, "target": callee, "type": "calls"} for caller, callee in js_call_edges]
+             + path_edges + instruction["edges"])
     return {
-        "engine": "python_ast_interprocedural_v1", "fixed_point_rounds": rounds,
-        "fixed_point_converged": converged,
+        "engine": "multi_artifact_behavior_graph_v3",
+        "fixed_point_rounds": {"python": rounds, "javascript": js_rounds},
+        "fixed_point_converged": converged and js_converged,
         "nodes": nodes[:500], "edges": edges[:1000], "graph_evidence": evidence[:100], "behavior_paths": paths[:100],
-        "coverage": {"python_files_seen": sum(Path(file).suffix.lower() == ".py" for file in blobs), "python_files_parsed": len(parsed_files), "functions": len(functions), "call_edges": len(call_edges), "taint_paths": len(paths), "parse_errors": parse_errors, "unsupported_code_files": unsupported_files, "unresolved_calls": unresolved_calls[:100]},
+        "coverage": {
+            "python_files_seen": sum(Path(file).suffix.lower() == ".py" for file in blobs),
+            "python_files_parsed": len(parsed_files),
+            "javascript_files_seen": sum(Path(file).suffix.lower() in JS_SUFFIXES for file in blobs),
+            "javascript_files_parsed": len(js_parsed_files),
+            "javascript_files_skipped_by_bound": js_skipped_files,
+            "functions": len(functions) + len(js_functions),
+            "call_edges": len(call_edges) + len(js_call_edges),
+            "taint_paths": len(paths),
+            "instruction_paths": len(instruction["paths"]),
+            "embedded_code_artifacts": embedded_artifacts,
+            **instruction["coverage"],
+            "parse_errors": parse_errors + js_parse_errors,
+            "unsupported_code_files": unsupported_files,
+            "unresolved_calls": unresolved_calls[:100],
+        },
     }
