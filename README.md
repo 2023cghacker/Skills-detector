@@ -51,16 +51,31 @@ The pipeline has four bounded stages:
    extracts the goal, inputs, outputs, object scope, named services, and visible
    effects.
 3. **Static behavior recovery** maps operative prose, fenced shell, Python,
-   and JavaScript into three typed path forms: remote acquisition, direct
-   system effect, and sensitive source-to-sink flow.
-4. **Policy review** compares function and behavior while independently
-   checking malicious attacks, design defects, and legal or compliance risks.
+   JavaScript, and bounded statically decoded constants into three typed path
+   forms: remote acquisition, direct system effect, and sensitive
+   source-to-sink flow.
+4. **Policy review** assigns each material behavior a cited
+   `within / outside / unknown` scope relation. Independent attack paths and
+   high-confidence scope excess can block; fully covered paths can pass.
 
 The original research workflow remains the detailed design reference:
 
 <p align="center">
   <img src="assets/method-overview.png" alt="Detailed research workflow" width="92%" />
 </p>
+
+## Evidence paths, not keyword labels
+
+<p align="center">
+  <img src="assets/case-study-paths.png" alt="Benign and malicious declaration-behavior evidence paths" width="100%" />
+</p>
+
+Sensitive behavior is not automatically malicious. The left case authenticates
+requests to the declared Trello REST API and receives `pass`. The right case
+hides a credential-transfer directive in a Base64 constant; static decoding
+exposes the requested transfer and its concealment. It receives `block`.
+Dashed edges are static evidence associations interpreted by the reviewer,
+not runtime traces. Both cases cite source locations.
 
 ## Source-disjoint benchmark
 
@@ -70,7 +85,8 @@ The original research workflow remains the detailed design reference:
 
 The primary experiment uses 500 malicious and 500 benign records sampled from
 the official source-disjoint test split of MaliciousSkillBench. All methods
-below complete the same 977-package paired subset:
+below complete the same 977-package paired subset. This experiment evaluates
+the historical multi-artifact path-replay operating point:
 
 - **Ours:** precision **88/89 (98.88%)**, recall **88/491 (17.92%)**, F1
   **30.34%**, FPR **1/486 (0.21%)**.
@@ -84,9 +100,14 @@ without increasing its false-positive rate. Direct review remains the
 recall-oriented operating point; Skills Detector provides the more selective,
 source-localized admission point.
 
-On the 200-package MalSkillsBench development diagnostic, Ours reaches
-**89/90 (98.89%)** malicious precision, **89/99 (89.90%)** recall, and
-**94.18%** F1. The multi-artifact graph recovers structured paths in
+The current scope-review model run completes **197/200 (98.50%)** MalSkillsBench
+packages: accuracy **189/197 (95.94%)**, malicious precision **89/89 (100.00%)**,
+recall **89/97 (91.75%)**, and **95.70%** F1. Three persistent failures remain
+recorded after two recovery passes. On the 194 samples shared with path replay,
+F1 changes from 94.57% to 95.65%, while the review rate falls from 43.30% to
+33.51%; this development comparison does not isolate an individual module.
+
+The multi-artifact graph recovers structured paths in
 **94/100 (94.00%)** malicious packages, compared with **0/100 (0.00%)** for the
 Python-only graph. This corpus is retained for component diagnosis because its
 source and owner are label-confounded.
@@ -104,6 +125,8 @@ counts are not precision, prevalence, or confirmed findings.
   download, permission change, persistence, concealment, and destructive
   behavior.
 - Location-preserving extraction of operative prose and fenced code.
+- Bounded, printable-only Base64 constant decoding into hashed virtual
+  artifacts; decoded content is scanned as data and never interpreted.
 - Cross-file Python AST summaries and Tree-sitter JavaScript summaries for
   interprocedural source-to-sink paths, plus bounded shell command chains.
 - Direct-effect paths for protected-system writes, persistence, destructive
@@ -112,6 +135,9 @@ counts are not precision, prevalence, or confirmed findings.
   be triggered by an isolated URL, API name, or sensitive-object mention.
 - Independent declaration, instruction, and final-review model calls with
   closed JSON schemas and evidence-ID validation.
+- A local declared-scope gate that requires cited declaration and behavior
+  evidence for `outside` decisions and prevents minimal descriptions from
+  inventing permissions or contradictions.
 - DeepSeek V4 Flash as the default model provider, with thinking disabled and
   temperature set to zero; OpenAI-compatible fallback support is retained.
 - Fixed-commit, in-memory benchmark reading that does not restore or execute
@@ -282,8 +308,9 @@ intentional malicious attack.
 
 ## Ongoing work
 
-We are extending language coverage and validating the detector on additional
-Skill sources. Confirmed ecosystem findings will follow coordinated disclosure.
+Evaluation is being extended with official MalSkills source-disjoint
+comparison and controlled function-view ablation. Confirmed ecosystem
+findings will follow coordinated disclosure.
 
 ## Safety and evidence handling
 

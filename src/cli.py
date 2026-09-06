@@ -20,7 +20,16 @@ from .metrics import binary_metrics, bootstrap_ci, triage_metrics
 from .pipeline.model_client import DEFAULT_PROVIDER, default_model, require_api_key
 from .visualize import write_behavior_graph_dot
 
-DETECTOR_METHOD_VERSION = "multi_artifact_behavior_graph_v3"
+DETECTOR_METHOD_VERSION = "declared_scope_behavior_graph_v5"
+
+
+def _source_fingerprint() -> str:
+    digest = hashlib.sha256()
+    root = Path(__file__).parent
+    for path in sorted(root.rglob("*.py")):
+        digest.update(path.relative_to(root).as_posix().encode())
+        digest.update(path.read_bytes())
+    return digest.hexdigest()
 
 
 def _format_ratio(label: str, numerator: int, denominator: int, value: float) -> str:
@@ -185,6 +194,7 @@ def _evaluate(args: argparse.Namespace) -> int:
     nominal_calls = 0 if args.mode == "rules" else (1 if args.mode == "direct" else 5)
     config = {"mode": args.mode, "provider": args.provider if args.mode != "rules" else None, "model": model if args.mode != "rules" else None, "ablation": ablation, "detector_method_version": DETECTOR_METHOD_VERSION, "behavior_engine": "multi_artifact_behavior_graph_v2", "model_calls_per_package_nominal_max": nominal_calls, "stage_semantic_attempts_max": 3 if args.mode not in {"rules", "direct"} else 0, "sample_error_policy": "record_and_continue", "threshold": args.threshold, "commit": args.commit, "samples": len(rows), "shard_count": shard_count, "shard_index": shard_index, "zero_execution": True}
     config_path = output / "config.json"
+    config["source_sha256"] = _source_fingerprint()
     if args.resume and config_path.exists() and json.loads(config_path.read_text(encoding="utf-8")) != config:
         raise ValueError("resume configuration does not match the existing run")
     config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
